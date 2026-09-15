@@ -9,7 +9,8 @@ import {
   Printer, X, Check, AlertTriangle, Clock, ChevronRight, Menu, Store,
   ArrowDownCircle, ArrowUpCircle, RefreshCw, ShieldAlert, Lock, Barcode,
   ChevronDown, Ban, CheckCircle2, CircleDot, Truck, ClipboardList, RotateCcw,
-  Contact, Gift, Wallet2, PackageCheck, ArrowLeftRight, Building2, MessageCircle,
+  Contact, Gift, Wallet2, PackageCheck, ArrowLeftRight, Building2, MessageCircle, UserCog,
+  Image as ImageIcon, Camera,
 } from "lucide-react";
 
 /* ----------------------------- helpers ----------------------------- */
@@ -45,7 +46,7 @@ const MENU = [
   { id: "retur", label: "Retur", icon: RotateCcw, roles: ["OWNER", "ADMIN", "SUPERVISOR", "KASIR"] },
   { id: "laporan", label: "Laporan", icon: FileBarChart, roles: ["OWNER", "ADMIN", "SUPERVISOR", "KASIR"] },
   { id: "user", label: "User", icon: Users, roles: ["OWNER", "ADMIN"] },
-  { id: "pengaturan", label: "Pengaturan", icon: Settings, roles: ["OWNER"] },
+  { id: "pengaturan", label: "Pengaturan", icon: Settings, roles: ["OWNER", "ADMIN"] },
 ];
 
 function seedData() {
@@ -56,8 +57,8 @@ function seedData() {
     { id: "c4", name: "Snack" },
   ];
   const stores = [
-    { id: "st1", name: "Toko Pusat", address: "Jl. Contoh No. 10", phone: "0812-3456-7890" },
-    { id: "st2", name: "Toko Cabang Selatan", address: "Jl. Merdeka No. 22", phone: "0813-9988-7766" },
+    { id: "st1", name: "Toko Pusat", address: "Jl. Contoh No. 10", phone: "0812-3456-7890", active: true },
+    { id: "st2", name: "Toko Cabang Selatan", address: "Jl. Merdeka No. 22", phone: "0813-9988-7766", active: false },
   ];
   const products = [
     { id: "p1", sku: "KOP-001", barcode: "8991001", name: "Kopi Hitam", categoryId: "c1", unit: "cup", buyPrice: 4000, sellPrice: 10000, stock: { st1: 28, st2: 12 }, minStock: 10, active: true },
@@ -85,6 +86,7 @@ function seedData() {
   const settings = {
     storeName: "Toko Berkah", address: "Jl. Contoh No. 10", phone: "0812-3456-7890",
     footer: "Terima kasih atas kunjungan Anda", currency: "Rp", taxPercent: 0, trxPrefix: "TRX",
+    loginTagline: "Internet boleh mati, transaksi tetap jalan.",
   };
   const customers = [
     { id: "cu1", name: "Ibu Ani", phone: "0813-1111-2222", address: "Jl. Melati No. 5", points: 0, totalTransaksi: 0, totalPembelian: 0, piutang: 0 },
@@ -102,6 +104,58 @@ function getStock(product, storeId) {
   if (!product || !product.stock) return 0;
   if (!storeId) return Object.values(product.stock).reduce((a, b) => a + b, 0);
   return product.stock[storeId] || 0;
+}
+
+function activeStores(data) {
+  return data.stores.filter((s) => s.active);
+}
+
+// Backfills fields that didn't exist in older saved data (from a previous
+// version of this app) so upgrading the code never corrupts/breaks existing
+// stored data. Add a line here whenever a future update introduces a new
+// top-level field on an existing entity.
+function migrateData(parsed) {
+  const patch = {};
+  if (Array.isArray(parsed.stores) && parsed.stores.some((s) => s.active === undefined)) {
+    patch.stores = parsed.stores.map((s) => (s.active === undefined ? { ...s, active: true } : s));
+  }
+  if (parsed.settings && parsed.settings.loginTagline === undefined) {
+    patch.settings = { ...parsed.settings, loginTagline: "Internet boleh mati, transaksi tetap jalan." };
+  }
+  return patch;
+}
+
+// Resizes/compresses an uploaded image file down to a small JPEG data URL
+// (max 320px on the longest side) so product photos don't bloat storage.
+function resizeImageFile(file, maxSize = 320, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Gagal membaca file"));
+    reader.onload = (e) => {
+      const img = new window.Image();
+      img.onerror = () => reject(new Error("File bukan gambar yang valid"));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height) {
+          if (width > maxSize) { height = Math.round(height * (maxSize / width)); width = maxSize; }
+        } else {
+          if (height > maxSize) { width = Math.round(width * (maxSize / height)); height = maxSize; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        try {
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function adjustStock(product, storeId, delta) {
@@ -127,7 +181,7 @@ export default function App() {
         const res = await window.storage.get(STORAGE_KEY, false);
         if (res && res.value) {
           const parsed = JSON.parse(res.value);
-          setData((prev) => ({ ...prev, ...parsed }));
+          setData((prev) => ({ ...prev, ...parsed, ...migrateData(parsed) }));
         }
       } catch (e) {
         /* first run, no saved state yet */
@@ -193,12 +247,21 @@ export default function App() {
     if (!u) return false;
     setSession(u);
     setView("dashboard");
-    setStoreId(u.storeId || data.stores[0]?.id || null);
+    setStoreId(u.storeId || activeStores(data)[0]?.id || null);
     return true;
   }
 
   function logout() {
     setSession(null);
+  }
+
+  function updateProfile(form) {
+    setData((d) => ({
+      ...d,
+      users: d.users.map((u) => (u.username === session.username ? { ...u, name: form.name, password: form.password ? form.password : u.password } : u)),
+    }));
+    setSession((s) => ({ ...s, name: form.name }));
+    showToast("Profil diperbarui");
   }
 
   const pendingCount = data.transactions.filter((t) => t.status === "PENDING" || t.status === "SYNCING").length;
@@ -207,6 +270,15 @@ export default function App() {
     if (!session) return null;
     return data.shifts.find((s) => s.cashier === session.username && s.status === "OPEN") || null;
   }, [data.shifts, session]);
+
+  // if the currently viewed store gets frozen by the owner, fall back to another active store
+  useEffect(() => {
+    if (!session || session.storeId) return; // fixed-store roles don't switch
+    const stillActive = data.stores.some((s) => s.id === storeId && s.active);
+    if (!stillActive) {
+      setStoreId(activeStores(data)[0]?.id || null);
+    }
+  }, [data.stores, session, storeId]);
 
   if (!loaded) {
     return (
@@ -220,7 +292,7 @@ export default function App() {
     <div style={{ fontFamily: "var(--font-ui)", background: "var(--bg)", color: "var(--ink)", minHeight: 640 }}>
       <style>{GLOBAL_CSS}</style>
       {!session ? (
-        <LoginScreen users={data.users} onLogin={login} storeName={data.settings.storeName} />
+        <LoginScreen users={data.users} onLogin={login} storeName={data.settings.storeName} tagline={data.settings.loginTagline} />
       ) : (
         <Shell
           session={session}
@@ -238,6 +310,7 @@ export default function App() {
           showToast={showToast}
           storeId={storeId}
           setStoreId={setStoreId}
+          updateProfile={updateProfile}
         />
       )}
       {toast && (
@@ -293,7 +366,7 @@ table.tbl tr:last-child td{border-bottom:none;}
 
 /* ----------------------------- Login ----------------------------- */
 
-function LoginScreen({ users, onLogin, storeName }) {
+function LoginScreen({ users, onLogin, storeName, tagline }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
@@ -316,22 +389,21 @@ function LoginScreen({ users, onLogin, storeName }) {
               </div>
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20 }}>KasirKU</span>
             </div>
-            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 27, lineHeight: 1.35, marginTop: 38, fontWeight: 600 }}>
-              Internet boleh mati,<br />transaksi tetap jalan.
+            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 27, lineHeight: 1.35, marginTop: 38, fontWeight: 600, whiteSpace: "pre-line" }}>
+              {tagline}
             </h1>
             <p style={{ opacity: .85, fontSize: 14, marginTop: 14, lineHeight: 1.6 }}>
               POS offline-first untuk {storeName}. Transaksi tersimpan lokal dan otomatis tersinkron saat koneksi kembali.
             </p>
           </div>
-          <div style={{ fontSize: 12, opacity: .7 }}>Demo akun: owner/admin/supervisor/kasir — password [role]123</div>
         </div>
         <form onSubmit={submit} className="card" style={{ flex: 1, border: "none", borderRadius: 0, padding: "44px 36px", display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 300 }}>
           <h2 style={{ fontFamily: "var(--font-display)", fontSize: 20, marginBottom: 4 }}>Masuk</h2>
           <p style={{ color: "var(--muted)", fontSize: 13, marginBottom: 24 }}>Masuk untuk mulai bertransaksi.</p>
           <label className="label">Username</label>
-          <input className="input" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="owner / admin / supervisor / kasir" style={{ marginBottom: 14 }} />
+          <input className="input" name="username" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Masukkan username" style={{ marginBottom: 14 }} />
           <label className="label">Password</label>
-          <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan password" style={{ marginBottom: 6 }} />
+          <input className="input" name="password" autoComplete="current-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan password" style={{ marginBottom: 6 }} />
           {err && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 8 }}>{err}</div>}
           <button type="submit" className="btn btn-primary" style={{ marginTop: 20, justifyContent: "center" }}>
             <Lock size={15} /> Masuk
@@ -345,7 +417,7 @@ function LoginScreen({ users, onLogin, storeName }) {
 /* ----------------------------- Shell ----------------------------- */
 
 function Shell(props) {
-  const { session, view, setView, logout, isOnline, setIsOnline, pendingCount, sidebarOpen, setSidebarOpen, data, setData, currentShift, showToast, storeId, setStoreId } = props;
+  const { session, view, setView, logout, isOnline, setIsOnline, pendingCount, sidebarOpen, setSidebarOpen, data, setData, currentShift, showToast, storeId, setStoreId, updateProfile } = props;
   const visibleMenu = MENU.filter((m) => m.roles.includes(session.role));
   const canSwitchStore = !session.storeId; // OWNER/ADMIN only
   const storeName = data.stores.find((s) => s.id === storeId)?.name || "-";
@@ -376,6 +448,7 @@ function Shell(props) {
           pendingCount={pendingCount} onMenuClick={() => setSidebarOpen(true)}
           currentView={view} currentShift={currentShift}
           stores={data.stores} storeId={storeId} setStoreId={setStoreId} canSwitchStore={canSwitchStore}
+          updateProfile={updateProfile}
         />
         <main style={{ flex: 1, padding: "20px 22px 40px", overflowX: "hidden" }}>
           {view === "dashboard" && <DashboardView data={data} session={session} storeId={storeId} canSwitchStore={canSwitchStore} />}
@@ -430,8 +503,9 @@ function SidebarInner({ visibleMenu, view, setView, session }) {
   );
 }
 
-function Topbar({ session, logout, isOnline, setIsOnline, pendingCount, onMenuClick, currentView, currentShift, stores, storeId, setStoreId, canSwitchStore }) {
+function Topbar({ session, logout, isOnline, setIsOnline, pendingCount, onMenuClick, currentView, currentShift, stores, storeId, setStoreId, canSwitchStore, updateProfile }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const title = MENU.find((m) => m.id === currentView)?.label || "";
   return (
     <header style={{
@@ -450,11 +524,11 @@ function Topbar({ session, logout, isOnline, setIsOnline, pendingCount, onMenuCl
         )}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        {canSwitchStore ? (
+        {canSwitchStore && stores.filter((s) => s.active).length > 1 ? (
           <div style={{ position: "relative" }}>
             <Building2 size={14} style={{ position: "absolute", left: 9, top: 9, color: "var(--muted)", pointerEvents: "none" }} />
             <select className="input" value={storeId || ""} onChange={(e) => setStoreId(e.target.value)} style={{ paddingLeft: 28, fontSize: 12.5, fontWeight: 600, width: "auto" }}>
-              {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {stores.filter((s) => s.active).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
         ) : (
@@ -490,6 +564,9 @@ function Topbar({ session, logout, isOnline, setIsOnline, pendingCount, onMenuCl
           {menuOpen && (
             <div className="card" style={{ position: "absolute", right: 0, top: 44, width: 190, padding: 6, zIndex: 40, boxShadow: "0 10px 30px rgba(0,0,0,.12)" }}>
               <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--muted)" }}>{ROLE_LABEL[session.role]}</div>
+              <button onClick={() => { setProfileOpen(true); setMenuOpen(false); }} className="btn btn-ghost" style={{ width: "100%", justifyContent: "flex-start" }}>
+                <UserCog size={15} /> Edit Profil
+              </button>
               <button onClick={logout} className="btn btn-ghost" style={{ width: "100%", justifyContent: "flex-start", color: "var(--danger)" }}>
                 <LogOut size={15} /> Keluar
               </button>
@@ -498,7 +575,29 @@ function Topbar({ session, logout, isOnline, setIsOnline, pendingCount, onMenuCl
         </div>
       </div>
       <style>{`.spin{animation:spin 1.4s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      {profileOpen && <ProfileEditModal session={session} onClose={() => setProfileOpen(false)} onSave={updateProfile} />}
     </header>
+  );
+}
+
+function ProfileEditModal({ session, onClose, onSave }) {
+  const [name, setName] = useState(session.name);
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState("");
+  function submit() {
+    if (!name.trim()) { setErr("Nama tidak boleh kosong."); return; }
+    onSave({ name: name.trim(), password });
+    onClose();
+  }
+  return (
+    <Modal onClose={onClose} title="Edit profil saya" width={340}>
+      <label className="label">Nama</label>
+      <input className="input" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 10 }} />
+      <label className="label">Password baru (kosongkan jika tidak diubah)</label>
+      <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+      {err && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 10 }}>{err}</div>}
+      <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 16 }} onClick={submit}>Simpan</button>
+    </Modal>
   );
 }
 
@@ -535,8 +634,9 @@ function DashboardView({ data, session, storeId, canSwitchStore }) {
   }, [data.transactions, effectiveStoreId]);
 
   const storeComparison = useMemo(() => {
-    if (!canSwitchStore || data.stores.length < 2) return [];
-    return data.stores.map((s) => ({
+    const active = activeStores(data);
+    if (!canSwitchStore || active.length < 2) return [];
+    return active.map((s) => ({
       name: s.name,
       total: data.transactions.filter((t) => t.date === today && t.status !== "VOID" && t.storeId === s.id).reduce((sum, t) => sum + t.total, 0),
     }));
@@ -578,7 +678,7 @@ function DashboardView({ data, session, storeId, canSwitchStore }) {
       {canSwitchStore && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
           <TabBtn active={!viewAll} onClick={() => setViewAll(false)} label={storeName} />
-          {data.stores.length > 1 && <TabBtn active={viewAll} onClick={() => setViewAll(true)} label="Semua Toko" />}
+          {activeStores(data).length > 1 && <TabBtn active={viewAll} onClick={() => setViewAll(true)} label="Semua Toko" />}
         </div>
       )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 18 }}>
@@ -672,6 +772,26 @@ function DashboardView({ data, session, storeId, canSwitchStore }) {
 
 function EmptyHint({ text }) {
   return <div style={{ color: "var(--muted)", fontSize: 13, padding: "24px 0", textAlign: "center" }}>{text}</div>;
+}
+
+function ProductThumb({ photo, size = 40 }) {
+  const style = {
+    width: size, height: size, borderRadius: 8, flexShrink: 0,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: "var(--bg)", border: "1px solid var(--border)", overflow: "hidden",
+  };
+  if (photo) {
+    return (
+      <div style={style}>
+        <img src={photo} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      </div>
+    );
+  }
+  return (
+    <div style={style}>
+      <ImageIcon size={Math.round(size * 0.45)} color="var(--muted)" />
+    </div>
+  );
 }
 
 /* ----------------------------- POS Kasir ----------------------------- */
@@ -1172,8 +1292,13 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
               return (
                 <tr key={p.id}>
                   <td>
-                    <div style={{ fontWeight: 600 }}>{p.name}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{p.sku} · {p.barcode}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <ProductThumb photo={p.photo} />
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{p.name}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{p.sku} · {p.barcode}</div>
+                      </div>
+                    </div>
                   </td>
                   <td>{cat}</td>
                   <td>{fmtRp(p.buyPrice)}</td>
@@ -1211,10 +1336,30 @@ function ProductForm({ initial, categories, storeId, storeName, onClose, onSave 
   const [form, setForm] = useState(initial ? {
     sku: initial.sku, barcode: initial.barcode, name: initial.name, categoryId: initial.categoryId,
     unit: initial.unit, buyPrice: initial.buyPrice, sellPrice: initial.sellPrice, stock: getStock(initial, storeId), minStock: initial.minStock,
-  } : { sku: "", barcode: "", name: "", categoryId: categories[0]?.id || "", unit: "pcs", buyPrice: 0, sellPrice: 0, stock: 0, minStock: 5 });
+    photo: initial.photo || null,
+  } : { sku: "", barcode: "", name: "", categoryId: categories[0]?.id || "", unit: "pcs", buyPrice: 0, sellPrice: 0, stock: 0, minStock: 5, photo: null });
   const [err, setErr] = useState("");
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const fileInputRef = useRef(null);
 
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
+
+  async function handlePhotoChange(e) {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setErr("File harus berupa gambar."); return; }
+    setPhotoBusy(true);
+    setErr("");
+    try {
+      const dataUrl = await resizeImageFile(file);
+      set("photo", dataUrl);
+    } catch (ex) {
+      setErr("Gagal memproses foto, coba file lain.");
+    } finally {
+      setPhotoBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   function submit() {
     if (!form.name.trim() || !form.sku.trim()) { setErr("Nama dan SKU wajib diisi."); return; }
@@ -1227,6 +1372,34 @@ function ProductForm({ initial, categories, storeId, storeName, onClose, onSave 
 
   return (
     <Modal onClose={onClose} title={initial ? "Edit produk" : "Tambah produk"} width={440}>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 14 }}>
+        {form.photo ? (
+          <div style={{ position: "relative" }}>
+            <img src={form.photo} alt="" style={{ width: 72, height: 72, borderRadius: 10, objectFit: "cover", border: "1px solid var(--border)" }} />
+            <button type="button" onClick={() => set("photo", null)} title="Hapus foto" style={{
+              position: "absolute", top: -6, right: -6, width: 20, height: 20, borderRadius: "50%",
+              background: "var(--danger)", color: "#fff", border: "2px solid #fff", display: "flex",
+              alignItems: "center", justifyContent: "center", padding: 0,
+            }}>
+              <X size={11} />
+            </button>
+          </div>
+        ) : (
+          <div onClick={() => fileInputRef.current?.click()} style={{
+            width: 72, height: 72, borderRadius: 10, border: "1.5px dashed var(--border)", display: "flex",
+            flexDirection: "column", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "var(--muted)", gap: 2,
+          }}>
+            <Camera size={18} />
+          </div>
+        )}
+        <div>
+          <button type="button" className="btn btn-outline" onClick={() => fileInputRef.current?.click()} disabled={photoBusy}>
+            <ImageIcon size={13} /> {photoBusy ? "Memproses..." : form.photo ? "Ganti foto" : "Unggah foto"}
+          </button>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 5 }}>Opsional. JPG/PNG, otomatis dikompres.</div>
+        </div>
+        <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} />
+      </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div style={{ gridColumn: "1/-1" }}>
           <label className="label">Nama produk</label>
@@ -1322,7 +1495,12 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
                 const stock = getStock(p, storeId);
                 return (
                   <tr key={p.id}>
-                    <td style={{ fontWeight: 600 }}>{p.name}</td>
+                    <td>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <ProductThumb photo={p.photo} size={34} />
+                        <span style={{ fontWeight: 600 }}>{p.name}</span>
+                      </div>
+                    </td>
                     <td style={{ color: stock <= p.minStock ? "var(--danger)" : "var(--ink)", fontWeight: 700 }}>{stock} {p.unit}</td>
                     <td>{p.minStock} {p.unit}</td>
                     <td><button className="btn btn-outline" onClick={() => setAdjustFor(p)}>Sesuaikan stok</button></td>
@@ -1344,7 +1522,12 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
                   const stock = getStock(p, storeId);
                   return (
                     <tr key={p.id}>
-                      <td style={{ fontWeight: 600 }}>{p.name}</td>
+                      <td>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                          <ProductThumb photo={p.photo} size={34} />
+                          <span style={{ fontWeight: 600 }}>{p.name}</span>
+                        </div>
+                      </td>
                       <td style={{ color: "var(--danger)", fontWeight: 700 }}>{stock} {p.unit}</td>
                       <td>{p.minStock} {p.unit}</td>
                       <td style={{ color: "var(--danger)" }}>-{p.minStock - stock}</td>
@@ -1841,13 +2024,29 @@ function VoidModal({ trx, isDirect, onClose, onConfirm }) {
 
 function UserView({ data, setData, showToast, session }) {
   const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
   const ownerCount = data.users.filter((u) => u.role === "OWNER").length;
+  const stores = activeStores(data);
 
   function addUser(form) {
     if (data.users.some((u) => u.username === form.username)) { showToast("Username sudah digunakan", "error"); return; }
     setData((d) => ({ ...d, users: [...d.users, form] }));
     setFormOpen(false);
     showToast("User ditambahkan");
+  }
+
+  function updateUser(username, form) {
+    const target = data.users.find((u) => u.username === username);
+    if (target.role === "OWNER" && ownerCount <= 1 && form.role !== "OWNER") {
+      showToast("Tidak bisa mengubah role satu-satunya akun Owner", "error");
+      return;
+    }
+    setData((d) => ({
+      ...d,
+      users: d.users.map((u) => (u.username === username ? { ...u, name: form.name, role: form.role, pin: form.pin, storeId: form.storeId, password: form.password ? form.password : u.password } : u)),
+    }));
+    setEditing(null);
+    showToast("User diperbarui");
   }
 
   function removeUser(u) {
@@ -1864,7 +2063,7 @@ function UserView({ data, setData, showToast, session }) {
       </div>
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
-          <thead><tr><th>Nama</th><th>Username</th><th>Role</th><th>PIN</th><th></th></tr></thead>
+          <thead><tr><th>Nama</th><th>Username</th><th>Role</th><th>Toko</th><th>PIN</th><th></th></tr></thead>
           <tbody>
             {data.users.map((u) => {
               const isSelf = u.username === session.username;
@@ -1874,8 +2073,10 @@ function UserView({ data, setData, showToast, session }) {
                   <td style={{ fontWeight: 600 }}>{u.name}{isSelf && <span style={{ color: "var(--muted)", fontWeight: 400 }}> (Anda)</span>}</td>
                   <td>{u.username}</td>
                   <td><span className="badge" style={{ background: "var(--primary-light)", color: "var(--primary-dark)" }}>{ROLE_LABEL[u.role]}</span></td>
+                  <td style={{ color: "var(--muted)", fontSize: 12.5 }}>{u.storeId ? (data.stores.find((s) => s.id === u.storeId)?.name || "-") : "Semua toko"}</td>
                   <td>{u.pin || "-"}</td>
-                  <td>
+                  <td style={{ display: "flex", gap: 6 }}>
+                    <button className="btn btn-outline" onClick={() => setEditing(u)}>Edit</button>
                     {!isSelf && !isLastOwner && (
                       <button className="btn btn-danger" onClick={() => removeUser(u)}><Trash2 size={13} /></button>
                     )}
@@ -1886,31 +2087,52 @@ function UserView({ data, setData, showToast, session }) {
           </tbody>
         </table>
       </div>
-      {formOpen && <UserForm onClose={() => setFormOpen(false)} onSave={addUser} />}
+      {formOpen && <UserForm stores={stores} onClose={() => setFormOpen(false)} onSave={addUser} />}
+      {editing && <UserForm initial={editing} stores={stores} onClose={() => setEditing(null)} onSave={(form) => updateUser(editing.username, form)} />}
     </div>
   );
 }
 
-function UserForm({ onClose, onSave }) {
-  const [form, setForm] = useState({ username: "", password: "", name: "", role: "KASIR", pin: "" });
+function UserForm({ initial, stores, onClose, onSave }) {
+  const [form, setForm] = useState(initial
+    ? { username: initial.username, password: "", name: initial.name, role: initial.role, pin: initial.pin || "", storeId: initial.storeId || "" }
+    : { username: "", password: "", name: "", role: "KASIR", pin: "", storeId: stores[0]?.id || "" });
   const [err, setErr] = useState("");
+  const needsStore = form.role === "SUPERVISOR" || form.role === "KASIR";
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
   function submit() {
-    if (!form.username.trim() || !form.password.trim() || !form.name.trim()) { setErr("Lengkapi semua field wajib."); return; }
-    onSave(form.role === "KASIR" ? form : { ...form, pin: undefined });
+    if (!form.username.trim() || !form.name.trim()) { setErr("Lengkapi semua field wajib."); return; }
+    if (!initial && !form.password.trim()) { setErr("Password wajib diisi untuk user baru."); return; }
+    if (needsStore && !form.storeId) { setErr("Pilih toko untuk role ini."); return; }
+    const payload = {
+      username: form.username, name: form.name, role: form.role,
+      password: form.password, // updateUser() keeps old password when this is blank in edit mode
+      pin: form.role === "KASIR" ? form.pin : undefined,
+      storeId: needsStore ? form.storeId : null,
+    };
+    onSave(payload);
   }
   return (
-    <Modal onClose={onClose} title="Tambah user" width={380}>
+    <Modal onClose={onClose} title={initial ? `Edit user — ${initial.name}` : "Tambah user"} width={380}>
       <label className="label">Nama lengkap</label>
       <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} style={{ marginBottom: 10 }} />
       <label className="label">Username</label>
-      <input className="input" value={form.username} onChange={(e) => set("username", e.target.value)} style={{ marginBottom: 10 }} />
-      <label className="label">Password</label>
-      <input className="input" type="password" value={form.password} onChange={(e) => set("password", e.target.value)} style={{ marginBottom: 10 }} />
+      <input className="input" value={form.username} disabled={!!initial} onChange={(e) => set("username", e.target.value)} style={{ marginBottom: 10 }} />
+      <label className="label">Password {initial && "(kosongkan jika tidak diubah)"}</label>
+      <input className="input" type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder={initial ? "••••••••" : ""} style={{ marginBottom: 10 }} />
       <label className="label">Role</label>
       <select className="input" value={form.role} onChange={(e) => set("role", e.target.value)} style={{ marginBottom: 10 }}>
         {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
       </select>
+      {needsStore && (
+        <>
+          <label className="label">Toko</label>
+          <select className="input" value={form.storeId} onChange={(e) => set("storeId", e.target.value)} style={{ marginBottom: 10 }}>
+            <option value="">Pilih toko</option>
+            {stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </>
+      )}
       {form.role === "KASIR" && (
         <>
           <label className="label">PIN kasir</label>
@@ -1927,6 +2149,7 @@ function UserForm({ onClose, onSave }) {
 
 function PengaturanView({ data, setData, showToast }) {
   const [form, setForm] = useState(data.settings);
+  const [storeFormOpen, setStoreFormOpen] = useState(null); // null = closed, {} = new, store obj = edit
 
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
 
@@ -1935,39 +2158,117 @@ function PengaturanView({ data, setData, showToast }) {
     showToast("Pengaturan disimpan");
   }
 
+  function toggleStoreActive(store) {
+    const willBeActive = !store.active;
+    if (!willBeActive && data.stores.filter((s) => s.active).length <= 1) {
+      showToast("Tidak bisa membekukan satu-satunya toko aktif", "error");
+      return;
+    }
+    setData((d) => ({ ...d, stores: d.stores.map((s) => (s.id === store.id ? { ...s, active: willBeActive } : s)) }));
+    showToast(willBeActive ? "Toko diaktifkan" : "Toko dibekukan");
+  }
+
+  function saveStore(storeForm) {
+    setData((d) => {
+      if (storeFormOpen && storeFormOpen.id) {
+        return { ...d, stores: d.stores.map((s) => (s.id === storeFormOpen.id ? { ...s, ...storeForm } : s)) };
+      }
+      return { ...d, stores: [...d.stores, { id: uid("st"), active: true, ...storeForm }] };
+    });
+    setStoreFormOpen(null);
+    showToast("Toko disimpan");
+  }
+
   return (
-    <div className="card" style={{ padding: 22, maxWidth: 520 }}>
-      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Pengaturan toko</div>
-      <div style={{ display: "grid", gap: 12 }}>
-        <div>
-          <label className="label">Nama toko</label>
-          <input className="input" value={form.storeName} onChange={(e) => set("storeName", e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Alamat</label>
-          <input className="input" value={form.address} onChange={(e) => set("address", e.target.value)} />
-        </div>
-        <div>
-          <label className="label">No. telepon</label>
-          <input className="input" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
-        </div>
-        <div>
-          <label className="label">Footer struk</label>
-          <input className="input" value={form.footer} onChange={(e) => set("footer", e.target.value)} />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+    <div style={{ display: "grid", gap: 18, maxWidth: 520 }}>
+      <div className="card" style={{ padding: 22 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16 }}>Pengaturan toko</div>
+        <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <label className="label">Prefix nomor transaksi</label>
-            <input className="input" value={form.trxPrefix} onChange={(e) => set("trxPrefix", e.target.value)} />
+            <label className="label">Nama toko</label>
+            <input className="input" value={form.storeName} onChange={(e) => set("storeName", e.target.value)} />
           </div>
           <div>
-            <label className="label">Pajak (%)</label>
-            <input className="input" type="number" value={form.taxPercent} onChange={(e) => set("taxPercent", Number(e.target.value) || 0)} />
+            <label className="label">Alamat</label>
+            <input className="input" value={form.address} onChange={(e) => set("address", e.target.value)} />
           </div>
+          <div>
+            <label className="label">No. telepon</label>
+            <input className="input" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+          </div>
+          <div>
+            <label className="label">Footer struk</label>
+            <input className="input" value={form.footer} onChange={(e) => set("footer", e.target.value)} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label className="label">Prefix nomor transaksi</label>
+              <input className="input" value={form.trxPrefix} onChange={(e) => set("trxPrefix", e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Pajak (%)</label>
+              <input className="input" type="number" value={form.taxPercent} onChange={(e) => set("taxPercent", Number(e.target.value) || 0)} />
+            </div>
+          </div>
+          <div>
+            <label className="label">Tagline halaman login</label>
+            <textarea className="input" rows={2} value={form.loginTagline} onChange={(e) => set("loginTagline", e.target.value)} placeholder="Contoh: Internet boleh mati, transaksi tetap jalan." style={{ resize: "vertical", fontFamily: "inherit" }} />
+            <div style={{ fontSize: 11.5, color: "var(--muted)", marginTop: 4 }}>Teks ini tampil di bawah logo KasirKU pada halaman login, bisa diubah Owner atau Admin.</div>
+          </div>
+        </div>
+        <button className="btn btn-primary" style={{ marginTop: 18 }} onClick={save}>Simpan pengaturan</button>
+      </div>
+
+      <div className="card" style={{ padding: 22 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Manajemen toko</div>
+          <button className="btn btn-outline" onClick={() => setStoreFormOpen({})}><Plus size={14} /> Tambah toko</button>
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)", marginBottom: 12 }}>
+          Toko yang dibekukan (Nonaktif) tidak akan muncul sebagai pilihan operasional (kasir, transfer stok, dll), tapi data historisnya tetap tersimpan.
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          {data.stores.map((s) => (
+            <div key={s.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 10 }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 13.5 }}>{s.name}</div>
+                <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{s.address}</div>
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <button onClick={() => toggleStoreActive(s)} className="badge" style={{ background: s.active ? "var(--primary-light)" : "#EEE", color: s.active ? "var(--primary-dark)" : "var(--muted)", border: "none" }}>
+                  {s.active ? "Aktif" : "Nonaktif"}
+                </button>
+                <button className="btn btn-outline" onClick={() => setStoreFormOpen(s)}>Edit</button>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-      <button className="btn btn-primary" style={{ marginTop: 18 }} onClick={save}>Simpan pengaturan</button>
+
+      {storeFormOpen && <StoreForm initial={storeFormOpen.id ? storeFormOpen : null} onClose={() => setStoreFormOpen(null)} onSave={saveStore} />}
     </div>
+  );
+}
+
+function StoreForm({ initial, onClose, onSave }) {
+  const [form, setForm] = useState(initial ? { name: initial.name, address: initial.address, phone: initial.phone } : { name: "", address: "", phone: "" });
+  const [err, setErr] = useState("");
+  function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
+  function submit() {
+    if (!form.name.trim()) { setErr("Nama toko wajib diisi."); return; }
+    onSave(form);
+  }
+  return (
+    <Modal onClose={onClose} title={initial ? "Edit toko" : "Tambah toko"} width={380}>
+      <label className="label">Nama toko</label>
+      <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} style={{ marginBottom: 10 }} />
+      <label className="label">Alamat</label>
+      <input className="input" value={form.address} onChange={(e) => set("address", e.target.value)} style={{ marginBottom: 10 }} />
+      <label className="label">No. telepon</label>
+      <input className="input" value={form.phone} onChange={(e) => set("phone", e.target.value)} />
+      {err && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 10 }}>{err}</div>}
+      <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 16 }} onClick={submit}>Simpan</button>
+    </Modal>
   );
 }
 
@@ -2525,14 +2826,27 @@ function NewReturnModal({ trx, onClose, onSave, isDirect, alreadyReturned }) {
 /* ----------------------------- Transfer Stok ----------------------------- */
 
 function TransferView({ data, setData, session, showToast, storeId }) {
-  const [fromStore, setFromStore] = useState(storeId || data.stores[0]?.id || "");
-  const [toStore, setToStore] = useState(data.stores.find((s) => s.id !== storeId)?.id || "");
+  const active = activeStores(data);
+  const [fromStore, setFromStore] = useState(storeId || active[0]?.id || "");
+  const [toStore, setToStore] = useState(active.find((s) => s.id !== storeId)?.id || "");
   const [productId, setProductId] = useState("");
   const [qty, setQty] = useState("");
   const [note, setNote] = useState("");
 
   const sourceProduct = data.products.find((p) => p.id === productId);
   const availableStock = sourceProduct ? getStock(sourceProduct, fromStore) : 0;
+
+  if (active.length < 2) {
+    return (
+      <div className="card" style={{ padding: 40, textAlign: "center", maxWidth: 440, margin: "40px auto" }}>
+        <ArrowLeftRight size={30} color="var(--accent-dark)" style={{ marginBottom: 10 }} />
+        <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Belum ada toko cabang aktif</div>
+        <p style={{ color: "var(--muted)", fontSize: 13.5 }}>
+          Transfer stok butuh minimal 2 toko aktif. Aktifkan toko cabang di menu Pengaturan &gt; Manajemen Toko terlebih dahulu.
+        </p>
+      </div>
+    );
+  }
 
   function submitTransfer() {
     const q = Number(qty);
@@ -2573,13 +2887,13 @@ function TransferView({ data, setData, session, showToast, storeId }) {
           <div>
             <label className="label">Dari toko</label>
             <select className="input" value={fromStore} onChange={(e) => setFromStore(e.target.value)}>
-              {data.stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {active.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div>
             <label className="label">Ke toko</label>
             <select className="input" value={toStore} onChange={(e) => setToStore(e.target.value)}>
-              {data.stores.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              {active.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
         </div>
