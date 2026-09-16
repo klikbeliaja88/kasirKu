@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from "react";
+import * as XLSX from "xlsx";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   PieChart, Pie, Cell,
@@ -10,7 +11,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, RefreshCw, ShieldAlert, Lock, Barcode,
   ChevronDown, Ban, CheckCircle2, CircleDot, Truck, ClipboardList, RotateCcw,
   Contact, Gift, Wallet2, PackageCheck, ArrowLeftRight, Building2, MessageCircle, UserCog,
-  Image as ImageIcon, Camera,
+  Image as ImageIcon, Camera, FileSpreadsheet, FileText,
 } from "lucide-react";
 
 /* ----------------------------- helpers ----------------------------- */
@@ -72,16 +73,16 @@ function seedData() {
     { id: "p9", sku: "SMB-001", barcode: "8991009", name: "Gula Pasir 1kg", categoryId: "c3", unit: "kg", buyPrice: 13000, sellPrice: 16000, stock: { st1: 20, st2: 10 }, minStock: 10, active: true },
     { id: "p10", sku: "SMB-002", barcode: "8991010", name: "Beras 5kg", categoryId: "c3", unit: "karung", buyPrice: 62000, sellPrice: 72000, stock: { st1: 9, st2: 5 }, minStock: 5, active: true },
     { id: "p11", sku: "SMB-003", barcode: "8991011", name: "Minyak Goreng 1L", categoryId: "c3", unit: "botol", buyPrice: 15000, sellPrice: 19000, stock: { st1: 15, st2: 7 }, minStock: 8, active: true },
-  ];
+  ].map((p) => ({ ...p, createdAt: todayStr() }));
   const stockMovements = products.flatMap((p) => stores.map((s) => ({
     id: uid("mv"), date: todayStr(), productId: p.id, storeId: s.id, type: "STOCK_IN",
     qtyIn: p.stock[s.id] || 0, qtyOut: 0, note: "Stok awal", user: "system", trxRef: null,
   })));
   const users = [
-    { username: "owner", password: "owner123", role: "OWNER", name: "Budi Santoso", storeId: null },
-    { username: "admin", password: "admin123", role: "ADMIN", name: "Sari Admin", storeId: null },
-    { username: "supervisor", password: "super123", role: "SUPERVISOR", name: "Dedi Supervisor", storeId: "st1" },
-    { username: "kasir", password: "kasir123", role: "KASIR", name: "Rahmat Kasir", pin: "1234", storeId: "st1" },
+    { username: "owner", password: "owner123", role: "OWNER", name: "Budi Santoso", storeId: null, createdAt: todayStr() },
+    { username: "admin", password: "admin123", role: "ADMIN", name: "Sari Admin", storeId: null, createdAt: todayStr() },
+    { username: "supervisor", password: "super123", role: "SUPERVISOR", name: "Dedi Supervisor", storeId: "st1", createdAt: todayStr() },
+    { username: "kasir", password: "kasir123", role: "KASIR", name: "Rahmat Kasir", pin: "1234", storeId: "st1", createdAt: todayStr() },
   ];
   const settings = {
     storeName: "Toko Berkah", address: "Jl. Contoh No. 10", phone: "0812-3456-7890",
@@ -89,10 +90,10 @@ function seedData() {
     loginTagline: "Internet boleh mati, transaksi tetap jalan.",
   };
   const customers = [
-    { id: "cu1", name: "Ibu Ani", phone: "0813-1111-2222", address: "Jl. Melati No. 5", points: 0, totalTransaksi: 0, totalPembelian: 0, piutang: 0 },
+    { id: "cu1", name: "Ibu Ani", phone: "0813-1111-2222", address: "Jl. Melati No. 5", points: 0, totalTransaksi: 0, totalPembelian: 0, piutang: 0, createdAt: todayStr() },
   ];
   const suppliers = [
-    { id: "sp1", name: "CV Sumber Makmur", phone: "021-555-1230", address: "Jl. Industri No. 8", contactPerson: "Pak Joko" },
+    { id: "sp1", name: "CV Sumber Makmur", phone: "021-555-1230", address: "Jl. Industri No. 8", contactPerson: "Pak Joko", createdAt: todayStr() },
   ];
   return {
     categories, products, stockMovements, users, settings, customers, suppliers, stores,
@@ -108,6 +109,13 @@ function getStock(product, storeId) {
 
 function activeStores(data) {
   return data.stores.filter((s) => s.active);
+}
+
+// Always derived live from current buyPrice/sellPrice rather than stored,
+// so it never goes stale when buyPrice changes later (e.g. via PO receiving).
+function calcMargin(buyPrice, sellPrice) {
+  if (!buyPrice || buyPrice <= 0) return null;
+  return Math.round(((sellPrice - buyPrice) / buyPrice) * 1000) / 10;
 }
 
 // Backfills fields that didn't exist in older saved data (from a previous
@@ -357,10 +365,34 @@ table.tbl th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-sp
 table.tbl td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;}
 table.tbl tr:last-child td{border-bottom:none;}
 .badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:100px;}
+
+/* ---- Mobile / tablet responsiveness ---- */
+@media (max-width: 900px) {
+  main { padding: 14px 14px 32px !important; }
+}
+@media (max-width: 560px) {
+  .form-grid-2col { grid-template-columns: 1fr !important; }
+  .login-panels > div:first-child { padding: 30px 24px !important; }
+  .login-panels > div:last-child { padding: 30px 24px !important; }
+  /* Prevent iOS Safari auto-zoom-on-focus, which happens whenever a
+     focused input's font-size is under 16px. */
+  .input, input, select, textarea { font-size: 16px !important; }
+  table.tbl th, table.tbl td { padding: 8px 9px; font-size: 12.5px; }
+  .btn { padding: 10px 14px; }
+}
+@media (max-width: 420px) {
+  .card { border-radius: 12px; }
+}
+
 @media print {
   body * { visibility: hidden; }
-  .receipt-print, .receipt-print * { visibility: visible; }
+  .receipt-print, .receipt-print *, .report-print, .report-print * { visibility: visible; }
   .receipt-print { position: fixed; top:0; left:0; width:100%; }
+  .report-print { position: absolute; top:0; left:0; width:100%; padding: 16px; }
+  .report-print .no-print { display: none !important; }
+  .report-print .print-only { display: block !important; }
+  .report-print table.tbl th, .report-print table.tbl td { padding: 6px 8px; font-size: 11px; }
+  @page { margin: 14mm; }
 }
 `;
 
@@ -380,7 +412,7 @@ function LoginScreen({ users, onLogin, storeName, tagline }) {
 
   return (
     <div style={{ minHeight: 640, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ display: "flex", width: "100%", maxWidth: 860, borderRadius: 20, overflow: "hidden", boxShadow: "0 20px 60px rgba(14,124,80,.14)" }}>
+      <div className="login-panels" style={{ display: "flex", width: "100%", maxWidth: 860, borderRadius: 20, overflow: "hidden", boxShadow: "0 20px 60px rgba(14,124,80,.14)", flexWrap: "wrap" }}>
         <div style={{ flex: 1, background: "linear-gradient(160deg,var(--primary-dark),var(--primary))", color: "#fff", padding: "44px 36px", display: "flex", flexDirection: "column", justifyContent: "space-between", minWidth: 280 }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -509,8 +541,8 @@ function Topbar({ session, logout, isOnline, setIsOnline, pendingCount, onMenuCl
   const title = MENU.find((m) => m.id === currentView)?.label || "";
   return (
     <header style={{
-      height: 60, borderBottom: "1px solid var(--border)", background: "var(--card)",
-      display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 18px", gap: 12, flexWrap: "wrap",
+      minHeight: 60, borderBottom: "1px solid var(--border)", background: "var(--card)",
+      display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 18px", gap: 12, flexWrap: "wrap",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
         <button className="btn btn-ghost mobile-only-btn" onClick={onMenuClick} style={{ display: "inline-flex", padding: 8 }}>
@@ -594,7 +626,7 @@ function ProfileEditModal({ session, onClose, onSave }) {
       <label className="label">Nama</label>
       <input className="input" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 10 }} />
       <label className="label">Password baru (kosongkan jika tidak diubah)</label>
-      <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+      <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
       {err && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 10 }}>{err}</div>}
       <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 16 }} onClick={submit}>Simpan</button>
     </Modal>
@@ -774,6 +806,51 @@ function EmptyHint({ text }) {
   return <div style={{ color: "var(--muted)", fontSize: 13, padding: "24px 0", textAlign: "center" }}>{text}</div>;
 }
 
+function Pagination({ page, setPage, totalItems, pageSize = 10 }) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  if (totalPages <= 1) return null;
+  const maxButtons = 10;
+  let startP = Math.max(1, page - Math.floor(maxButtons / 2));
+  let endP = Math.min(totalPages, startP + maxButtons - 1);
+  startP = Math.max(1, endP - maxButtons + 1);
+  const pages = [];
+  for (let i = startP; i <= endP; i++) pages.push(i);
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "center", padding: "14px 0 4px", flexWrap: "wrap" }}>
+      <button className="btn btn-outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} style={{ padding: "6px 10px" }}>â€¹</button>
+      {pages.map((p) => (
+        <button key={p} onClick={() => setPage(p)} className="btn" style={{ background: p === page ? "var(--primary)" : "#fff", color: p === page ? "#fff" : "var(--ink)", border: "1px solid var(--border)", padding: "6px 11px", minWidth: 34, justifyContent: "center" }}>{p}</button>
+      ))}
+      <button className="btn btn-outline" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} style={{ padding: "6px 10px" }}>â€º</button>
+      <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 8 }}>Halaman {page} dari {totalPages}</span>
+    </div>
+  );
+}
+
+function usePage(deps) {
+  const [page, setPage] = useState(1);
+  const key = JSON.stringify(deps);
+  const prevKey = useRef(key);
+  if (prevKey.current !== key) { prevKey.current = key; }
+  useEffect(() => { setPage(1); }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  return [page, setPage];
+}
+
+function DateRangeFilter({ from, setFrom, to, setTo, label }) {
+  return (
+    <>
+      <div>
+        <label className="label">{label ? `${label} â€” Dari` : "Dari tanggal"}</label>
+        <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+      </div>
+      <div>
+        <label className="label">{label ? `${label} â€” Sampai` : "Sampai tanggal"}</label>
+        <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+      </div>
+    </>
+  );
+}
+
 function ProductThumb({ photo, size = 40 }) {
   const style = {
     width: size, height: size, borderRadius: 8, flexShrink: 0,
@@ -804,6 +881,7 @@ function PosView({ data, setData, session, isOnline, currentShift, showToast, se
   const [receipt, setReceipt] = useState(null);
   const [customerId, setCustomerId] = useState("");
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const barcodeRef = useRef(null);
 
   if (!currentShift) {
@@ -860,12 +938,16 @@ function PosView({ data, setData, session, isOnline, currentShift, showToast, se
     }));
   }
 
-  function handleBarcodeEnter(e) {
-    if (e.key !== "Enter") return;
-    const val = e.target.value.trim();
+  function handleBarcodeValue(val) {
+    val = (val || "").trim();
     if (!val) return;
     const p = data.products.find((x) => x.active && (x.barcode === val || x.sku.toLowerCase() === val.toLowerCase()));
     if (p) { addToCart(p); showToast(`${p.name} ditambahkan`); } else { showToast("Produk tidak ditemukan", "error"); }
+  }
+
+  function handleBarcodeEnter(e) {
+    if (e.key !== "Enter") return;
+    handleBarcodeValue(e.target.value);
     e.target.value = "";
   }
 
@@ -936,9 +1018,14 @@ function PosView({ data, setData, session, isOnline, currentShift, showToast, se
             <Search size={15} style={{ position: "absolute", left: 11, top: 11, color: "var(--muted)" }} />
             <input className="input" placeholder="Cari nama produk / SKU..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 32 }} />
           </div>
-          <div style={{ position: "relative", flex: "1 1 220px" }}>
-            <Barcode size={15} style={{ position: "absolute", left: 11, top: 11, color: "var(--muted)" }} />
-            <input ref={barcodeRef} className="input" placeholder="Scan barcode / SKU lalu Enter" onKeyDown={handleBarcodeEnter} style={{ paddingLeft: 32 }} />
+          <div style={{ position: "relative", flex: "1 1 220px", display: "flex", gap: 6 }}>
+            <div style={{ position: "relative", flex: 1 }}>
+              <Barcode size={15} style={{ position: "absolute", left: 11, top: 11, color: "var(--muted)" }} />
+              <input ref={barcodeRef} className="input" placeholder="Scan barcode / SKU lalu Enter" onKeyDown={handleBarcodeEnter} style={{ paddingLeft: 32 }} />
+            </div>
+            <button className="btn btn-outline" onClick={() => setCameraOpen(true)} title="Scan pakai kamera" style={{ padding: "9px 12px" }}>
+              <Camera size={16} />
+            </button>
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
@@ -1014,12 +1101,18 @@ function PosView({ data, setData, session, isOnline, currentShift, showToast, se
         <CustomerForm
           onClose={() => setQuickCustomerOpen(false)}
           onSave={(form) => {
-            const newCust = { id: uid("cu"), points: 0, totalTransaksi: 0, totalPembelian: 0, piutang: 0, ...form };
+            const newCust = { id: uid("cu"), points: 0, totalTransaksi: 0, totalPembelian: 0, piutang: 0, createdAt: todayStr(), ...form };
             setData((d) => ({ ...d, customers: [...d.customers, newCust] }));
             setCustomerId(newCust.id);
             setQuickCustomerOpen(false);
             showToast("Pelanggan ditambahkan");
           }}
+        />
+      )}
+      {cameraOpen && (
+        <CameraScanModal
+          onClose={() => setCameraOpen(false)}
+          onDetected={(val) => { handleBarcodeValue(val); setCameraOpen(false); }}
         />
       )}
       <style>{`@media (max-width:840px){.pos-grid{grid-template-columns:1fr !important;}}`}</style>
@@ -1117,7 +1210,7 @@ function ReceiptModal({ trx, settings, onClose, customerPhone }) {
     lines.push(settings.address);
     lines.push("");
     lines.push(trx.trxNo);
-    lines.push(`${trx.time} — ${trx.cashierName}`);
+    lines.push(`${trx.time} â€” ${trx.cashierName}`);
     lines.push("-----------------------------");
     trx.items.forEach((i) => {
       lines.push(`${i.name}`);
@@ -1151,7 +1244,7 @@ function ReceiptModal({ trx, settings, onClose, customerPhone }) {
         </div>
         <Dashed />
         <div>{trx.trxNo}</div>
-        <div>{trx.time} — {trx.cashierName}</div>
+        <div>{trx.time} â€” {trx.cashierName}</div>
         {trx.customerName && <div>Pelanggan: {trx.customerName}</div>}
         <Dashed />
         {trx.items.map((i) => (
@@ -1211,6 +1304,104 @@ function StatusBadge({ status }) {
   return <span className="badge" style={{ background: s.bg, color: s.c }}><Icon size={11} />{s.label}</span>;
 }
 
+function CameraScanModal({ onClose, onDetected }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [status, setStatus] = useState("requesting"); // requesting | streaming | unsupported | denied
+
+  useEffect(() => {
+    let cancelled = false;
+    async function start() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus("unsupported");
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+        setStatus("streaming");
+      } catch (err) {
+        if (!cancelled) setStatus("denied");
+      }
+    }
+    start();
+    return () => {
+      cancelled = true;
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+    };
+  }, []);
+
+  const supported = typeof window !== "undefined" && typeof window.BarcodeDetector !== "undefined";
+
+  useEffect(() => {
+    if (status !== "streaming" || !supported) return;
+    let stopped = false;
+    let raf;
+    const detector = new window.BarcodeDetector({ formats: ["ean_13", "ean_8", "code_128", "code_39", "upc_a", "upc_e", "qr_code"] });
+    async function tick() {
+      if (stopped) return;
+      try {
+        const codes = await detector.detect(videoRef.current);
+        if (codes && codes.length > 0 && codes[0].rawValue) {
+          stopped = true;
+          onDetected(codes[0].rawValue);
+          return;
+        }
+      } catch (e) { /* transient decode error, keep trying */ }
+      raf = requestAnimationFrame(tick);
+    }
+    tick();
+    return () => { stopped = true; if (raf) cancelAnimationFrame(raf); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, supported]);
+
+  return (
+    <Modal onClose={onClose} title="Scan barcode dengan kamera" width={380}>
+      {status === "denied" && (
+        <div style={{ textAlign: "center", padding: "20px 8px" }}>
+          <ShieldAlert size={26} color="var(--danger)" style={{ marginBottom: 8 }} />
+          <div style={{ fontSize: 13.5, color: "var(--ink)" }}>Izin kamera ditolak atau tidak tersedia.</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Izinkan akses kamera di pengaturan browser, atau gunakan input barcode manual.</div>
+        </div>
+      )}
+      {status === "unsupported" && (
+        <div style={{ textAlign: "center", padding: "20px 8px" }}>
+          <Camera size={26} color="var(--muted)" style={{ marginBottom: 8 }} />
+          <div style={{ fontSize: 13.5, color: "var(--ink)" }}>Perangkat/browser ini tidak mendukung akses kamera.</div>
+          <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4 }}>Gunakan input barcode manual di kolom pencarian.</div>
+        </div>
+      )}
+      {(status === "requesting" || status === "streaming") && (
+        <div style={{ position: "relative", borderRadius: 10, overflow: "hidden", background: "#000", aspectRatio: "4/3" }}>
+          <video ref={videoRef} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          {status === "requesting" && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 12.5 }}>
+              Meminta izin kamera...
+            </div>
+          )}
+        </div>
+      )}
+      {status === "streaming" && !supported && (
+        <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)" }}>
+          Browser ini belum mendukung deteksi barcode otomatis (didukung di Chrome/Edge terbaru, termasuk Chrome Android). Arahkan kamera lalu ketik manual di kolom barcode, atau coba browser lain.
+        </div>
+      )}
+      {status === "streaming" && supported && (
+        <div style={{ marginTop: 10, fontSize: 12, color: "var(--muted)", textAlign: "center" }}>Arahkan kamera ke barcode produk...</div>
+      )}
+      <button className="btn btn-outline" onClick={onClose} style={{ marginTop: 14, width: "100%", justifyContent: "center" }}>Tutup</button>
+    </Modal>
+  );
+}
+
 function Modal({ children, onClose, title, width = 420 }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(15,20,17,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 16 }} onClick={onClose}>
@@ -1232,12 +1423,18 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
   const [catFilter, setCatFilter] = useState("all");
   const [editing, setEditing] = useState(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const storeName = data.stores.find((s) => s.id === storeId)?.name || "-";
 
   const products = data.products.filter((p) =>
     (catFilter === "all" || p.categoryId === catFilter) &&
-    (search === "" || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()))
+    (search === "" || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())) &&
+    (!dateFrom || (p.createdAt || "") >= dateFrom) &&
+    (!dateTo || (p.createdAt || "") <= dateTo)
   );
+  const [page, setPage] = usePage([search, catFilter, dateFrom, dateTo]);
+  const pageItems = products.slice((page - 1) * 10, page * 10);
 
   function openNew() { setEditing(null); setFormOpen(true); }
   function openEdit(p) { setEditing(p); setFormOpen(true); }
@@ -1249,7 +1446,7 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
       }
       const stockMap = {};
       d.stores.forEach((s) => { stockMap[s.id] = s.id === storeId ? form.stock : 0; });
-      const newP = { id: uid("p"), active: true, ...form, stock: stockMap };
+      const newP = { id: uid("p"), active: true, createdAt: todayStr(), ...form, stock: stockMap };
       const mv = { id: uid("mv"), date: todayStr(), productId: newP.id, storeId, type: "STOCK_IN", qtyIn: form.stock, qtyOut: 0, note: "Produk baru", user: "system", trxRef: null };
       return { ...d, products: [...d.products, newP], stockMovements: [mv, ...d.stockMovements] };
     });
@@ -1272,6 +1469,7 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
           <option value="all">Semua kategori</option>
           {data.categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
+        <DateRangeFilter from={dateFrom} setFrom={setDateFrom} to={dateTo} setTo={setDateTo} label="Tgl. ditambahkan" />
         <button className="btn btn-primary" onClick={openNew}><Plus size={14} /> Tambah produk</button>
       </div>
       {canSwitchStore && (
@@ -1283,10 +1481,10 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead>
-            <tr><th>Produk</th><th>Kategori</th><th>Harga beli</th><th>Harga jual</th><th>Stok ({storeName})</th><th>Status</th><th></th></tr>
+            <tr><th>Produk</th><th>Kategori</th><th>Harga beli</th><th>Harga jual</th><th>Margin</th><th>Stok ({storeName})</th><th>Status</th><th></th></tr>
           </thead>
           <tbody>
-            {products.map((p) => {
+            {pageItems.map((p) => {
               const cat = data.categories.find((c) => c.id === p.categoryId)?.name || "-";
               const stock = getStock(p, storeId);
               return (
@@ -1296,13 +1494,18 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
                       <ProductThumb photo={p.photo} />
                       <div>
                         <div style={{ fontWeight: 600 }}>{p.name}</div>
-                        <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{p.sku} · {p.barcode}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{p.sku} Â· {p.barcode}</div>
                       </div>
                     </div>
                   </td>
                   <td>{cat}</td>
                   <td>{fmtRp(p.buyPrice)}</td>
                   <td style={{ fontWeight: 600 }}>{fmtRp(p.sellPrice)}</td>
+                  <td>
+                    {(() => { const m = calcMargin(p.buyPrice, p.sellPrice); return m === null ? "-" : (
+                      <span className="badge" style={{ background: m >= 0 ? "var(--primary-light)" : "var(--danger-bg)", color: m >= 0 ? "var(--primary-dark)" : "var(--danger)" }}>{m}%</span>
+                    ); })()}
+                  </td>
                   <td style={{ color: stock <= p.minStock ? "var(--danger)" : "var(--ink)", fontWeight: stock <= p.minStock ? 700 : 400 }}>{stock} {p.unit}</td>
                   <td>
                     <button onClick={() => toggleActive(p)} className="badge" style={{ background: p.active ? "var(--primary-light)" : "#EEE", color: p.active ? "var(--primary-dark)" : "var(--muted)", border: "none" }}>
@@ -1313,10 +1516,11 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
                 </tr>
               );
             })}
-            {products.length === 0 && <tr><td colSpan={7}><EmptyHint text="Tidak ada produk." /></td></tr>}
+            {products.length === 0 && <tr><td colSpan={8}><EmptyHint text="Tidak ada produk." /></td></tr>}
           </tbody>
         </table>
       </div>
+      <Pagination page={page} setPage={setPage} totalItems={products.length} />
 
       {formOpen && (
         <ProductForm
@@ -1335,14 +1539,38 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
 function ProductForm({ initial, categories, storeId, storeName, onClose, onSave }) {
   const [form, setForm] = useState(initial ? {
     sku: initial.sku, barcode: initial.barcode, name: initial.name, categoryId: initial.categoryId,
-    unit: initial.unit, buyPrice: initial.buyPrice, sellPrice: initial.sellPrice, stock: getStock(initial, storeId), minStock: initial.minStock,
+    unit: initial.unit, buyPrice: initial.buyPrice, sellPrice: initial.sellPrice,
+    marginPercent: initial.buyPrice > 0 ? Math.round(((initial.sellPrice - initial.buyPrice) / initial.buyPrice) * 1000) / 10 : 0,
+    stock: getStock(initial, storeId), minStock: initial.minStock,
     photo: initial.photo || null,
-  } : { sku: "", barcode: "", name: "", categoryId: categories[0]?.id || "", unit: "pcs", buyPrice: 0, sellPrice: 0, stock: 0, minStock: 5, photo: null });
+  } : { sku: "", barcode: "", name: "", categoryId: categories[0]?.id || "", unit: "pcs", buyPrice: 0, sellPrice: 0, marginPercent: 0, stock: 0, minStock: 5, photo: null });
   const [err, setErr] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
   const fileInputRef = useRef(null);
 
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
+
+  function handleBuyPriceChange(val) {
+    const buyPrice = Number(val) || 0;
+    setForm((f) => ({ ...f, buyPrice: val, sellPrice: Math.round(buyPrice * (1 + (Number(f.marginPercent) || 0) / 100)) }));
+  }
+
+  function handleMarginChange(val) {
+    const margin = Number(val) || 0;
+    setForm((f) => {
+      const buyPrice = Number(f.buyPrice) || 0;
+      return { ...f, marginPercent: val, sellPrice: Math.round(buyPrice * (1 + margin / 100)) };
+    });
+  }
+
+  function handleSellPriceChange(val) {
+    const sellPrice = Number(val) || 0;
+    setForm((f) => {
+      const buyPrice = Number(f.buyPrice) || 0;
+      const margin = buyPrice > 0 ? Math.round(((sellPrice - buyPrice) / buyPrice) * 1000) / 10 : 0;
+      return { ...f, sellPrice: val, marginPercent: margin };
+    });
+  }
 
   async function handlePhotoChange(e) {
     const file = e.target.files && e.target.files[0];
@@ -1364,8 +1592,9 @@ function ProductForm({ initial, categories, storeId, storeName, onClose, onSave 
   function submit() {
     if (!form.name.trim() || !form.sku.trim()) { setErr("Nama dan SKU wajib diisi."); return; }
     if (form.sellPrice <= 0) { setErr("Harga jual harus lebih dari 0."); return; }
+    const { marginPercent, ...rest } = form; // margin is a live calculator only, not persisted (would go stale vs buyPrice/sellPrice)
     onSave({
-      ...form, buyPrice: Number(form.buyPrice) || 0, sellPrice: Number(form.sellPrice) || 0,
+      ...rest, buyPrice: Number(form.buyPrice) || 0, sellPrice: Number(form.sellPrice) || 0,
       stock: Number(form.stock) || 0, minStock: Number(form.minStock) || 0,
     });
   }
@@ -1400,7 +1629,7 @@ function ProductForm({ initial, categories, storeId, storeName, onClose, onSave 
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoChange} style={{ display: "none" }} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="form-grid-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div style={{ gridColumn: "1/-1" }}>
           <label className="label">Nama produk</label>
           <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} />
@@ -1425,11 +1654,19 @@ function ProductForm({ initial, categories, storeId, storeName, onClose, onSave 
         </div>
         <div>
           <label className="label">Harga beli</label>
-          <input className="input" type="number" value={form.buyPrice} onChange={(e) => set("buyPrice", e.target.value)} />
+          <input className="input" type="number" value={form.buyPrice} onChange={(e) => handleBuyPriceChange(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Margin (%)</label>
+          <input className="input" type="number" value={form.marginPercent} onChange={(e) => handleMarginChange(e.target.value)} placeholder="0" />
         </div>
         <div>
           <label className="label">Harga jual</label>
-          <input className="input" type="number" value={form.sellPrice} onChange={(e) => set("sellPrice", e.target.value)} />
+          <input className="input" type="number" value={form.sellPrice} onChange={(e) => handleSellPriceChange(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Laba per unit</label>
+          <input className="input" value={fmtRp(Math.max(0, (Number(form.sellPrice) || 0) - (Number(form.buyPrice) || 0)))} disabled style={{ color: "var(--primary-dark)", fontWeight: 700, background: "var(--bg)" }} />
         </div>
         <div>
           <label className="label">Stok {storeName} {initial && "(edit di menu Inventory)"}</label>
@@ -1451,9 +1688,18 @@ function ProductForm({ initial, categories, storeId, storeName, onClose, onSave 
 function StokView({ data, setData, session, showToast, storeId, canSwitchStore }) {
   const [tab, setTab] = useState("card");
   const [adjustFor, setAdjustFor] = useState(null);
+  const [mvFrom, setMvFrom] = useState("");
+  const [mvTo, setMvTo] = useState("");
   const storeName = data.stores.find((s) => s.id === storeId)?.name || "-";
   const lowStock = data.products.filter((p) => p.active && getStock(p, storeId) <= p.minStock);
-  const storeMovements = data.stockMovements.filter((m) => m.storeId === storeId);
+  const storeMovements = data.stockMovements.filter((m) => m.storeId === storeId && (!mvFrom || m.date >= mvFrom) && (!mvTo || m.date <= mvTo));
+
+  const [cardPage, setCardPage] = usePage([storeId]);
+  const cardItems = data.products.slice((cardPage - 1) * 10, cardPage * 10);
+  const [lowPage, setLowPage] = usePage([storeId, tab]);
+  const lowItems = lowStock.slice((lowPage - 1) * 10, lowPage * 10);
+  const [mvPage, setMvPage] = usePage([storeId, mvFrom, mvTo]);
+  const mvItems = storeMovements.slice((mvPage - 1) * 10, mvPage * 10);
 
   function saveAdjustment(product, type, qty, note, direction) {
     const q = Number(qty);
@@ -1491,7 +1737,7 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
           <table className="tbl">
             <thead><tr><th>Produk</th><th>Stok di {storeName}</th><th>Min. stok</th><th></th></tr></thead>
             <tbody>
-              {data.products.map((p) => {
+              {cardItems.map((p) => {
                 const stock = getStock(p, storeId);
                 return (
                   <tr key={p.id}>
@@ -1509,6 +1755,7 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
               })}
             </tbody>
           </table>
+          <Pagination page={cardPage} setPage={setCardPage} totalItems={data.products.length} />
         </div>
       )}
 
@@ -1518,7 +1765,7 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
             <table className="tbl">
               <thead><tr><th>Produk</th><th>Stok</th><th>Min. stok</th><th>Selisih</th></tr></thead>
               <tbody>
-                {lowStock.map((p) => {
+                {lowItems.map((p) => {
                   const stock = getStock(p, storeId);
                   return (
                     <tr key={p.id}>
@@ -1537,16 +1784,22 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
               </tbody>
             </table>
           )}
+          <Pagination page={lowPage} setPage={setLowPage} totalItems={lowStock.length} />
         </div>
       )}
 
       <div style={{ marginTop: 18 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Riwayat pergerakan stok — {storeName}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Riwayat pergerakan stok â€” {storeName}</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <DateRangeFilter from={mvFrom} setFrom={setMvFrom} to={mvTo} setTo={setMvTo} />
+          </div>
+        </div>
         <div className="card" style={{ overflowX: "auto" }}>
           <table className="tbl">
             <thead><tr><th>Tanggal</th><th>Produk</th><th>Jenis</th><th>Masuk</th><th>Keluar</th><th>Catatan</th><th>User</th></tr></thead>
             <tbody>
-              {storeMovements.slice(0, 30).map((m) => (
+              {mvItems.map((m) => (
                 <tr key={m.id}>
                   <td>{m.date}</td>
                   <td>{data.products.find((p) => p.id === m.productId)?.name || "-"}</td>
@@ -1560,6 +1813,7 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
               {storeMovements.length === 0 && <tr><td colSpan={7}><EmptyHint text="Belum ada pergerakan stok." /></td></tr>}
             </tbody>
           </table>
+          <Pagination page={mvPage} setPage={setMvPage} totalItems={storeMovements.length} />
         </div>
       </div>
 
@@ -1594,7 +1848,7 @@ function AdjustModal({ product, storeId, onClose, onSave }) {
   const [qty, setQty] = useState("");
   const [note, setNote] = useState("");
   return (
-    <Modal onClose={onClose} title={`Sesuaikan stok — ${product.name}`} width={380}>
+    <Modal onClose={onClose} title={`Sesuaikan stok â€” ${product.name}`} width={380}>
       <label className="label">Jenis penyesuaian</label>
       <select className="input" value={type} onChange={(e) => setType(e.target.value)} style={{ marginBottom: 10 }}>
         <option value="STOCK_IN">Stok masuk (restock)</option>
@@ -1679,7 +1933,16 @@ function KasShiftView({ data, setData, session, currentShift, showToast, storeId
   }
 
   const myShifts = data.shifts.filter((s) => s.storeId === storeId && (s.cashier === session.username || ["OWNER", "ADMIN", "SUPERVISOR"].includes(session.role)));
-  const todayCash = data.cashMovements.filter((c) => c.date === todayStr() && c.storeId === storeId);
+  const [cashFrom, setCashFrom] = useState(todayStr());
+  const [cashTo, setCashTo] = useState(todayStr());
+  const cashHistory = data.cashMovements.filter((c) => c.storeId === storeId && c.date >= cashFrom && c.date <= cashTo);
+  const [cashPage, setCashPage] = usePage([storeId, cashFrom, cashTo]);
+  const cashItems = cashHistory.slice((cashPage - 1) * 10, cashPage * 10);
+  const [shiftFrom, setShiftFrom] = useState("");
+  const [shiftTo, setShiftTo] = useState("");
+  const filteredShifts = myShifts.filter((s) => (!shiftFrom || s.date >= shiftFrom) && (!shiftTo || s.date <= shiftTo));
+  const [shiftPage, setShiftPage] = usePage([storeId, shiftFrom, shiftTo]);
+  const shiftItems = filteredShifts.slice((shiftPage - 1) * 10, shiftPage * 10);
 
   return (
     <div>
@@ -1697,9 +1960,9 @@ function KasShiftView({ data, setData, session, currentShift, showToast, storeId
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
-                  <CircleDot size={13} color="var(--primary)" /> Shift aktif — {currentShift.cashierName}
+                  <CircleDot size={13} color="var(--primary)" /> Shift aktif â€” {currentShift.cashierName}
                 </div>
-                <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Dibuka {currentShift.openTime} · Modal awal {fmtRp(currentShift.openingCash)}</div>
+                <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Dibuka {currentShift.openTime} Â· Modal awal {fmtRp(currentShift.openingCash)}</div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn btn-outline" onClick={() => setCashForm({ type: "IN" })}><ArrowDownCircle size={14} /> Kas masuk</button>
@@ -1723,12 +1986,17 @@ function KasShiftView({ data, setData, session, currentShift, showToast, storeId
         )}
       </div>
 
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Riwayat kas hari ini</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Riwayat kas</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <DateRangeFilter from={cashFrom} setFrom={setCashFrom} to={cashTo} setTo={setCashTo} />
+        </div>
+      </div>
       <div className="card" style={{ overflowX: "auto", marginBottom: 20 }}>
         <table className="tbl">
           <thead><tr><th>Jenis</th><th>Kategori</th><th>Nominal</th><th>Catatan</th><th>User</th></tr></thead>
           <tbody>
-            {todayCash.map((c) => (
+            {cashItems.map((c) => (
               <tr key={c.id}>
                 <td><span className="badge" style={{ background: c.type === "IN" ? "var(--primary-light)" : "var(--danger-bg)", color: c.type === "IN" ? "var(--primary-dark)" : "var(--danger)" }}>{c.type === "IN" ? "Masuk" : "Keluar"}</span></td>
                 <td>{c.category}</td>
@@ -1737,21 +2005,27 @@ function KasShiftView({ data, setData, session, currentShift, showToast, storeId
                 <td>{c.user}</td>
               </tr>
             ))}
-            {todayCash.length === 0 && <tr><td colSpan={5}><EmptyHint text="Belum ada catatan kas hari ini." /></td></tr>}
+            {cashHistory.length === 0 && <tr><td colSpan={5}><EmptyHint text="Belum ada catatan kas pada rentang ini." /></td></tr>}
           </tbody>
         </table>
+        <Pagination page={cashPage} setPage={setCashPage} totalItems={cashHistory.length} />
       </div>
 
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Riwayat shift</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Riwayat shift</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <DateRangeFilter from={shiftFrom} setFrom={setShiftFrom} to={shiftTo} setTo={setShiftTo} />
+        </div>
+      </div>
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead><tr><th>Kasir</th><th>Tanggal</th><th>Buka - Tutup</th><th>Modal awal</th><th>Expected</th><th>Actual</th><th>Selisih</th></tr></thead>
           <tbody>
-            {myShifts.map((s) => (
+            {shiftItems.map((s) => (
               <tr key={s.id}>
                 <td style={{ fontWeight: 600 }}>{s.cashierName}</td>
                 <td>{s.date}</td>
-                <td style={{ fontSize: 12 }}>{s.openTime} {s.closeTime ? `— ${s.closeTime}` : "(aktif)"}</td>
+                <td style={{ fontSize: 12 }}>{s.openTime} {s.closeTime ? `â€” ${s.closeTime}` : "(aktif)"}</td>
                 <td>{fmtRp(s.openingCash)}</td>
                 <td>{s.expectedCash != null ? fmtRp(s.expectedCash) : "-"}</td>
                 <td>{s.actualCash != null ? fmtRp(s.actualCash) : "-"}</td>
@@ -1760,9 +2034,10 @@ function KasShiftView({ data, setData, session, currentShift, showToast, storeId
                 </td>
               </tr>
             ))}
-            {myShifts.length === 0 && <tr><td colSpan={7}><EmptyHint text="Belum ada riwayat shift." /></td></tr>}
+            {filteredShifts.length === 0 && <tr><td colSpan={7}><EmptyHint text="Belum ada riwayat shift." /></td></tr>}
           </tbody>
         </table>
+        <Pagination page={shiftPage} setPage={setShiftPage} totalItems={filteredShifts.length} />
       </div>
 
       {openForm && <OpenShiftModal onClose={() => setOpenForm(false)} onConfirm={openShift} />}
@@ -1860,6 +2135,23 @@ function LaporanView({ data, session, setData, showToast, storeId, canSwitchStor
     return true;
   });
 
+  const [page, setPage] = usePage([from, to, storeFilter, kasir, method]);
+  const [printingAll, setPrintingAll] = useState(false);
+  useEffect(() => {
+    function onBeforePrint() { setPrintingAll(true); }
+    function onAfterPrint() { setPrintingAll(false); }
+    window.addEventListener("beforeprint", onBeforePrint);
+    window.addEventListener("afterprint", onAfterPrint);
+    return () => {
+      window.removeEventListener("beforeprint", onBeforePrint);
+      window.removeEventListener("afterprint", onAfterPrint);
+    };
+  }, []);
+  // The printed/exported report always contains the FULL filtered range, not
+  // just the page currently being browsed on screen â€” pagination is a
+  // browsing convenience only, never a reason to ship a partial report.
+  const pageItems = printingAll ? filtered : filtered.slice((page - 1) * 10, page * 10);
+
   const validTrx = filtered.filter((t) => t.status !== "VOID");
   const totalSales = validTrx.reduce((s, t) => s + t.total, 0);
   const totalItems = validTrx.reduce((s, t) => s + t.items.reduce((a, i) => a + i.qty, 0), 0);
@@ -1869,6 +2161,46 @@ function LaporanView({ data, session, setData, showToast, storeId, canSwitchStor
   }, 0), 0);
 
   const cashierList = [...new Set(data.transactions.map((t) => t.cashier))];
+
+  function exportExcel() {
+    const rows = validTrx.map((t) => ({
+      "No Transaksi": t.trxNo,
+      "Tanggal": t.date,
+      "Waktu": t.time,
+      "Kasir": t.cashierName,
+      "Toko": data.stores.find((s) => s.id === t.storeId)?.name || "-",
+      "Metode Bayar": t.payments.map((p) => `${p.method} ${fmtRp(p.amount)}`).join(" + "),
+      "Subtotal": t.subtotal,
+      "Diskon": t.discount,
+      "Pajak": t.tax,
+      "Total": t.total,
+      "Status": t.status,
+    }));
+    const summaryRows = [
+      { "No Transaksi": "RINGKASAN" },
+      { "No Transaksi": "Periode", "Tanggal": `${from} s/d ${to}` },
+      { "No Transaksi": "Total penjualan", "Tanggal": totalSales },
+      { "No Transaksi": "Jumlah transaksi", "Tanggal": validTrx.length },
+      { "No Transaksi": "Item terjual", "Tanggal": totalItems },
+      ...(!limited ? [{ "No Transaksi": "Laba kotor", "Tanggal": grossProfit }] : []),
+      {},
+    ];
+    const ws = XLSX.utils.json_to_sheet([...summaryRows, ...rows]);
+    ws["!cols"] = [{ wch: 20 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 14 }, { wch: 26 }, { wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Laporan Penjualan");
+    XLSX.writeFile(wb, `Laporan-Penjualan_${from}_${to}.xlsx`);
+    showToast("File Excel berhasil diunduh");
+  }
+
+  function printReport() {
+    window.print();
+  }
+
+  function exportPDF() {
+    showToast("Pada dialog cetak, pilih tujuan 'Simpan sebagai PDF'");
+    setTimeout(() => window.print(), 250);
+  }
 
   function requestVoid(trxId) {
     setData((d) => ({ ...d, transactions: d.transactions.map((t) => (t.id === trxId ? { ...t, status: "VOID_REQUESTED", voidStatus: "REQUESTED" } : t)) }));
@@ -1937,6 +2269,19 @@ function LaporanView({ data, session, setData, showToast, storeId, canSwitchStor
         </div>
       </div>
 
+      <div className="no-print" style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <button className="btn btn-outline" onClick={printReport}><Printer size={14} /> Cetak</button>
+        <button className="btn btn-outline" onClick={exportPDF}><FileText size={14} /> Export PDF</button>
+        <button className="btn btn-outline" onClick={exportExcel}><FileSpreadsheet size={14} /> Export Excel</button>
+      </div>
+
+      <div className="report-print">
+        <div className="print-only" style={{ display: "none", marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{data.settings.storeName} â€” Laporan Penjualan</div>
+          <div style={{ fontSize: 12, color: "#555" }}>Periode: {from} s/d {to}{canSwitchStore && storeFilter !== "all" ? ` Â· Toko: ${data.stores.find((s) => s.id === storeFilter)?.name || "-"}` : ""}</div>
+          <div style={{ fontSize: 11, color: "#888" }}>Dicetak: {nowStr()}</div>
+        </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10, marginBottom: 16 }}>
         <div className="card" style={{ padding: 14 }}><div style={{ fontSize: 12, color: "var(--muted)" }}>Total penjualan</div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20 }}>{fmtRp(totalSales)}</div></div>
         <div className="card" style={{ padding: 14 }}><div style={{ fontSize: 12, color: "var(--muted)" }}>Jumlah transaksi</div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20 }}>{validTrx.length}</div></div>
@@ -1946,19 +2291,19 @@ function LaporanView({ data, session, setData, showToast, storeId, canSwitchStor
 
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
-          <thead><tr><th></th><th>No. transaksi</th><th>Tanggal</th><th>Kasir</th><th>Metode</th><th>Total</th><th>Status</th><th></th></tr></thead>
+          <thead><tr><th className="no-print"></th><th>No. transaksi</th><th>Tanggal</th><th>Kasir</th><th>Metode</th><th>Total</th><th>Status</th><th className="no-print"></th></tr></thead>
           <tbody>
-            {filtered.map((t) => (
+            {pageItems.map((t) => (
               <Fragment key={t.id}>
                 <tr>
-                  <td><button className="btn-ghost" style={{ border: "none", background: "none" }} onClick={() => setExpanded(expanded === t.id ? null : t.id)}><ChevronRight size={14} style={{ transform: expanded === t.id ? "rotate(90deg)" : "none", transition: "transform .12s" }} /></button></td>
+                  <td className="no-print"><button className="btn-ghost" style={{ border: "none", background: "none" }} onClick={() => setExpanded(expanded === t.id ? null : t.id)}><ChevronRight size={14} style={{ transform: expanded === t.id ? "rotate(90deg)" : "none", transition: "transform .12s" }} /></button></td>
                   <td style={{ fontWeight: 600 }}>{t.trxNo}</td>
                   <td>{t.date}</td>
                   <td>{t.cashierName}</td>
                   <td>{t.payments.map((p) => p.method).join(", ")}</td>
                   <td style={{ fontWeight: 700 }}>{fmtRp(t.total)}</td>
                   <td><StatusBadge status={t.status} /></td>
-                  <td>
+                  <td className="no-print">
                     {t.status !== "VOID" && t.status !== "VOID_REQUESTED" && (
                       session.role === "KASIR"
                         ? <button className="btn btn-danger" onClick={() => setVoidReasonFor(t)}>Void</button>
@@ -1990,6 +2335,8 @@ function LaporanView({ data, session, setData, showToast, storeId, canSwitchStor
             {filtered.length === 0 && <tr><td colSpan={8}><EmptyHint text="Tidak ada transaksi pada rentang ini." /></td></tr>}
           </tbody>
         </table>
+        <div className="no-print"><Pagination page={page} setPage={setPage} totalItems={filtered.length} /></div>
+      </div>
       </div>
 
       {voidReasonFor && (
@@ -2025,12 +2372,17 @@ function VoidModal({ trx, isDirect, onClose, onConfirm }) {
 function UserView({ data, setData, showToast, session }) {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const ownerCount = data.users.filter((u) => u.role === "OWNER").length;
   const stores = activeStores(data);
+  const filteredUsers = data.users.filter((u) => (!dateFrom || (u.createdAt || "") >= dateFrom) && (!dateTo || (u.createdAt || "") <= dateTo));
+  const [page, setPage] = usePage([dateFrom, dateTo]);
+  const pageItems = filteredUsers.slice((page - 1) * 10, page * 10);
 
   function addUser(form) {
     if (data.users.some((u) => u.username === form.username)) { showToast("Username sudah digunakan", "error"); return; }
-    setData((d) => ({ ...d, users: [...d.users, form] }));
+    setData((d) => ({ ...d, users: [...d.users, { createdAt: todayStr(), ...form }] }));
     setFormOpen(false);
     showToast("User ditambahkan");
   }
@@ -2058,14 +2410,17 @@ function UserView({ data, setData, showToast, session }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <DateRangeFilter from={dateFrom} setFrom={setDateFrom} to={dateTo} setTo={setDateTo} label="Tgl. ditambahkan" />
+        </div>
         <button className="btn btn-primary" onClick={() => setFormOpen(true)}><Plus size={14} /> Tambah user</button>
       </div>
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead><tr><th>Nama</th><th>Username</th><th>Role</th><th>Toko</th><th>PIN</th><th></th></tr></thead>
           <tbody>
-            {data.users.map((u) => {
+            {pageItems.map((u) => {
               const isSelf = u.username === session.username;
               const isLastOwner = u.role === "OWNER" && ownerCount <= 1;
               return (
@@ -2084,8 +2439,10 @@ function UserView({ data, setData, showToast, session }) {
                 </tr>
               );
             })}
+            {filteredUsers.length === 0 && <tr><td colSpan={6}><EmptyHint text="Tidak ada user pada rentang ini." /></td></tr>}
           </tbody>
         </table>
+        <Pagination page={page} setPage={setPage} totalItems={filteredUsers.length} />
       </div>
       {formOpen && <UserForm stores={stores} onClose={() => setFormOpen(false)} onSave={addUser} />}
       {editing && <UserForm initial={editing} stores={stores} onClose={() => setEditing(null)} onSave={(form) => updateUser(editing.username, form)} />}
@@ -2113,13 +2470,13 @@ function UserForm({ initial, stores, onClose, onSave }) {
     onSave(payload);
   }
   return (
-    <Modal onClose={onClose} title={initial ? `Edit user — ${initial.name}` : "Tambah user"} width={380}>
+    <Modal onClose={onClose} title={initial ? `Edit user â€” ${initial.name}` : "Tambah user"} width={380}>
       <label className="label">Nama lengkap</label>
       <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} style={{ marginBottom: 10 }} />
       <label className="label">Username</label>
       <input className="input" value={form.username} disabled={!!initial} onChange={(e) => set("username", e.target.value)} style={{ marginBottom: 10 }} />
       <label className="label">Password {initial && "(kosongkan jika tidak diubah)"}</label>
-      <input className="input" type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder={initial ? "••••••••" : ""} style={{ marginBottom: 10 }} />
+      <input className="input" type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder={initial ? "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" : ""} style={{ marginBottom: 10 }} />
       <label className="label">Role</label>
       <select className="input" value={form.role} onChange={(e) => set("role", e.target.value)} style={{ marginBottom: 10 }}>
         {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
@@ -2200,7 +2557,7 @@ function PengaturanView({ data, setData, showToast }) {
             <label className="label">Footer struk</label>
             <input className="input" value={form.footer} onChange={(e) => set("footer", e.target.value)} />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="form-grid-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label className="label">Prefix nomor transaksi</label>
               <input className="input" value={form.trxPrefix} onChange={(e) => set("trxPrefix", e.target.value)} />
@@ -2279,11 +2636,18 @@ function PelangganView({ data, setData, showToast }) {
   const [payDebtFor, setPayDebtFor] = useState(null);
   const [detailFor, setDetailFor] = useState(null);
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
-  const customers = data.customers.filter((c) => search === "" || c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search));
+  const customers = data.customers.filter((c) =>
+    (search === "" || c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search)) &&
+    (!dateFrom || (c.createdAt || "") >= dateFrom) && (!dateTo || (c.createdAt || "") <= dateTo)
+  );
+  const [page, setPage] = usePage([search, dateFrom, dateTo]);
+  const pageItems = customers.slice((page - 1) * 10, page * 10);
 
   function addCustomer(form) {
-    setData((d) => ({ ...d, customers: [...d.customers, { id: uid("cu"), points: 0, totalTransaksi: 0, totalPembelian: 0, piutang: 0, ...form }] }));
+    setData((d) => ({ ...d, customers: [...d.customers, { id: uid("cu"), points: 0, totalTransaksi: 0, totalPembelian: 0, piutang: 0, createdAt: todayStr(), ...form }] }));
     setFormOpen(false);
     showToast("Pelanggan ditambahkan");
   }
@@ -2311,6 +2675,7 @@ function PelangganView({ data, setData, showToast }) {
           <Search size={15} style={{ position: "absolute", left: 11, top: 11, color: "var(--muted)" }} />
           <input className="input" placeholder="Cari nama / no. HP..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ paddingLeft: 32 }} />
         </div>
+        <DateRangeFilter from={dateFrom} setFrom={setDateFrom} to={dateTo} setTo={setDateTo} />
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <span style={{ fontSize: 13, color: "var(--muted)" }}>Total piutang: <b style={{ color: "var(--danger)" }}>{fmtRp(totalPiutang)}</b></span>
           <button className="btn btn-primary" onClick={() => setFormOpen(true)}><Plus size={14} /> Tambah pelanggan</button>
@@ -2320,7 +2685,7 @@ function PelangganView({ data, setData, showToast }) {
         <table className="tbl">
           <thead><tr><th>Nama</th><th>No. HP</th><th>Transaksi</th><th>Total belanja</th><th>Poin</th><th>Piutang</th><th></th></tr></thead>
           <tbody>
-            {customers.map((c) => (
+            {pageItems.map((c) => (
               <tr key={c.id}>
                 <td style={{ fontWeight: 600, cursor: "pointer" }} onClick={() => setDetailFor(c)}>{c.name}</td>
                 <td>{c.phone}</td>
@@ -2334,11 +2699,12 @@ function PelangganView({ data, setData, showToast }) {
             {customers.length === 0 && <tr><td colSpan={7}><EmptyHint text="Belum ada pelanggan." /></td></tr>}
           </tbody>
         </table>
+        <Pagination page={page} setPage={setPage} totalItems={customers.length} />
       </div>
 
       {formOpen && <CustomerForm onClose={() => setFormOpen(false)} onSave={addCustomer} />}
       {payDebtFor && (
-        <Modal onClose={() => setPayDebtFor(null)} title={`Bayar piutang — ${payDebtFor.name}`} width={340}>
+        <Modal onClose={() => setPayDebtFor(null)} title={`Bayar piutang â€” ${payDebtFor.name}`} width={340}>
           <PayAmountForm max={payDebtFor.piutang} onConfirm={(amt) => payDebt(payDebtFor.id, amt)} />
         </Modal>
       )}
@@ -2394,7 +2760,7 @@ function CustomerDetailModal({ customer, data, onClose }) {
         {trx.length === 0 && <EmptyHint text="Belum ada transaksi." />}
         {trx.map((t) => (
           <div key={t.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-            <span>{t.trxNo} · {t.date}</span><span style={{ fontWeight: 600 }}>{fmtRp(t.total)}</span>
+            <span>{t.trxNo} Â· {t.date}</span><span style={{ fontWeight: 600 }}>{fmtRp(t.total)}</span>
           </div>
         ))}
       </div>
@@ -2406,13 +2772,18 @@ function CustomerDetailModal({ customer, data, onClose }) {
 
 function SupplierView({ data, setData, showToast }) {
   const [formOpen, setFormOpen] = useState(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const suppliers = data.suppliers.filter((s) => (!dateFrom || (s.createdAt || "") >= dateFrom) && (!dateTo || (s.createdAt || "") <= dateTo));
+  const [page, setPage] = usePage([dateFrom, dateTo]);
+  const pageItems = suppliers.slice((page - 1) * 10, page * 10);
 
   function saveSupplier(form) {
     setData((d) => {
       if (formOpen && formOpen.id) {
         return { ...d, suppliers: d.suppliers.map((s) => (s.id === formOpen.id ? { ...s, ...form } : s)) };
       }
-      return { ...d, suppliers: [...d.suppliers, { id: uid("sp"), ...form }] };
+      return { ...d, suppliers: [...d.suppliers, { id: uid("sp"), createdAt: todayStr(), ...form }] };
     });
     setFormOpen(null);
     showToast("Supplier disimpan");
@@ -2425,14 +2796,17 @@ function SupplierView({ data, setData, showToast }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <DateRangeFilter from={dateFrom} setFrom={setDateFrom} to={dateTo} setTo={setDateTo} />
+        </div>
         <button className="btn btn-primary" onClick={() => setFormOpen({})}><Plus size={14} /> Tambah supplier</button>
       </div>
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead><tr><th>Nama supplier</th><th>Kontak</th><th>Telepon</th><th>Alamat</th><th>Hutang</th><th></th></tr></thead>
           <tbody>
-            {data.suppliers.map((s) => (
+            {pageItems.map((s) => (
               <tr key={s.id}>
                 <td style={{ fontWeight: 600 }}>{s.name}</td>
                 <td>{s.contactPerson}</td>
@@ -2445,6 +2819,7 @@ function SupplierView({ data, setData, showToast }) {
             {data.suppliers.length === 0 && <tr><td colSpan={6}><EmptyHint text="Belum ada supplier." /></td></tr>}
           </tbody>
         </table>
+        <Pagination page={page} setPage={setPage} totalItems={suppliers.length} />
       </div>
       {formOpen && <SupplierForm initial={formOpen.id ? formOpen : null} onClose={() => setFormOpen(null)} onSave={saveSupplier} />}
     </div>
@@ -2480,7 +2855,12 @@ function SupplierForm({ initial, onClose, onSave }) {
 function PembelianView({ data, setData, session, showToast, storeId }) {
   const [formOpen, setFormOpen] = useState(false);
   const [payFor, setPayFor] = useState(null);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const storeName = data.stores.find((s) => s.id === storeId)?.name || "-";
+  const filteredPOs = data.purchaseOrders.filter((po) => (!dateFrom || po.date >= dateFrom) && (!dateTo || po.date <= dateTo));
+  const [page, setPage] = usePage([dateFrom, dateTo]);
+  const pageItems = filteredPOs.slice((page - 1) * 10, page * 10);
 
   function createPO(supplierId, items) {
     if (!supplierId) { showToast("Pilih supplier", "error"); return; }
@@ -2542,14 +2922,17 @@ function PembelianView({ data, setData, session, showToast, storeId }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8, alignItems: "flex-end" }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <DateRangeFilter from={dateFrom} setFrom={setDateFrom} to={dateTo} setTo={setDateTo} />
+        </div>
         <button className="btn btn-primary" onClick={() => setFormOpen(true)}><Plus size={14} /> Buat purchase order</button>
       </div>
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead><tr><th>No. PO</th><th>Toko</th><th>Supplier</th><th>Tanggal</th><th>Total</th><th>Hutang</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {data.purchaseOrders.map((po) => {
+            {pageItems.map((po) => {
               const supplier = data.suppliers.find((s) => s.id === po.supplierId)?.name || "-";
               const remaining = po.total - po.paidAmount;
               return (
@@ -2572,10 +2955,11 @@ function PembelianView({ data, setData, session, showToast, storeId }) {
             {data.purchaseOrders.length === 0 && <tr><td colSpan={8}><EmptyHint text="Belum ada purchase order." /></td></tr>}
           </tbody>
         </table>
+        <Pagination page={page} setPage={setPage} totalItems={filteredPOs.length} />
       </div>
       {formOpen && <PurchaseOrderForm suppliers={data.suppliers} products={data.products} onClose={() => setFormOpen(false)} onSave={createPO} />}
       {payFor && (
-        <Modal onClose={() => setPayFor(null)} title={`Bayar hutang — ${payFor.poNo}`} width={340}>
+        <Modal onClose={() => setPayFor(null)} title={`Bayar hutang â€” ${payFor.poNo}`} width={340}>
           <PayAmountForm max={payFor.total - payFor.paidAmount} onConfirm={(amt) => payPO(payFor, amt)} />
         </Modal>
       )}
@@ -2646,6 +3030,11 @@ function ReturView({ data, setData, session, showToast, storeId }) {
   const [search, setSearch] = useState("");
   const [selectedTrx, setSelectedTrx] = useState(null);
   const canApprove = ["OWNER", "ADMIN", "SUPERVISOR"].includes(session.role);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const filteredReturns = data.returns.filter((r) => (!dateFrom || r.date >= dateFrom) && (!dateTo || r.date <= dateTo));
+  const [page, setPage] = usePage([dateFrom, dateTo]);
+  const pageItems = filteredReturns.slice((page - 1) * 10, page * 10);
 
   const matchedTrx = search.length >= 2
     ? data.transactions.filter((t) => t.status !== "VOID" && t.trxNo.toLowerCase().includes(search.toLowerCase()))
@@ -2717,7 +3106,7 @@ function ReturView({ data, setData, session, showToast, storeId }) {
           <div style={{ marginTop: 10 }}>
             {matchedTrx.slice(0, 5).map((t) => (
               <div key={t.id} onClick={() => setSelectedTrx(t)} style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13 }} className="trx-hit">
-                <span>{t.trxNo} · {t.date} · {t.cashierName}</span>
+                <span>{t.trxNo} Â· {t.date} Â· {t.cashierName}</span>
                 <span style={{ fontWeight: 700 }}>{fmtRp(t.total)}</span>
               </div>
             ))}
@@ -2726,11 +3115,14 @@ function ReturView({ data, setData, session, showToast, storeId }) {
       </div>
 
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Riwayat retur</div>
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+        <DateRangeFilter from={dateFrom} setFrom={setDateFrom} to={dateTo} setTo={setDateTo} />
+      </div>
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead><tr><th>No. retur</th><th>Transaksi</th><th>Tanggal</th><th>Alasan</th><th>Refund</th><th>Status</th><th></th></tr></thead>
           <tbody>
-            {data.returns.map((r) => (
+            {pageItems.map((r) => (
               <tr key={r.id}>
                 <td style={{ fontWeight: 600 }}>{r.returnNo}</td>
                 <td>{r.trxNo}</td>
@@ -2751,6 +3143,7 @@ function ReturView({ data, setData, session, showToast, storeId }) {
             {data.returns.length === 0 && <tr><td colSpan={7}><EmptyHint text="Belum ada retur." /></td></tr>}
           </tbody>
         </table>
+        <Pagination page={page} setPage={setPage} totalItems={filteredReturns.length} />
       </div>
 
       {selectedTrx && (
@@ -2799,14 +3192,14 @@ function NewReturnModal({ trx, onClose, onSave, isDirect, alreadyReturned }) {
   const refund = trx.items.reduce((s, i, idx) => s + i.price * qtys[idx], 0);
 
   return (
-    <Modal onClose={onClose} title={`Retur — ${trx.trxNo}`} width={420}>
+    <Modal onClose={onClose} title={`Retur â€” ${trx.trxNo}`} width={420}>
       <div style={{ marginBottom: 10 }}>
         {trx.items.map((i, idx) => (
           <div key={i.productId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{i.name}</div>
               <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
-                Dibeli {i.qty} · {fmtRp(i.price)}{maxes[idx] < i.qty && ` · sisa bisa diretur ${maxes[idx]}`}
+                Dibeli {i.qty} Â· {fmtRp(i.price)}{maxes[idx] < i.qty && ` Â· sisa bisa diretur ${maxes[idx]}`}
               </div>
             </div>
             <input className="input" type="number" min={0} max={maxes[idx]} value={qtys[idx]} disabled={maxes[idx] === 0} onChange={(e) => setQty(idx, e.target.value, maxes[idx])} style={{ width: 70 }} />
@@ -2832,6 +3225,11 @@ function TransferView({ data, setData, session, showToast, storeId }) {
   const [productId, setProductId] = useState("");
   const [qty, setQty] = useState("");
   const [note, setNote] = useState("");
+  const [trfFrom, setTrfFrom] = useState("");
+  const [trfTo, setTrfTo] = useState("");
+  const filteredTransfers = data.stockTransfers.filter((t) => (!trfFrom || t.date >= trfFrom) && (!trfTo || t.date <= trfTo));
+  const [trfPage, setTrfPage] = usePage([trfFrom, trfTo]);
+  const trfItems = filteredTransfers.slice((trfPage - 1) * 10, trfPage * 10);
 
   const sourceProduct = data.products.find((p) => p.id === productId);
   const availableStock = sourceProduct ? getStock(sourceProduct, fromStore) : 0;
@@ -2866,8 +3264,8 @@ function TransferView({ data, setData, session, showToast, storeId }) {
         return adjustStock(adjustStock(p, fromStore, -q), toStore, q);
       }),
       stockMovements: [
-        { id: uid("mv"), date: todayStr(), productId, storeId: fromStore, type: "TRANSFER_OUT", qtyIn: 0, qtyOut: q, note: `${transferNo} → ${toName}`, user: session.username, trxRef: null },
-        { id: uid("mv"), date: todayStr(), productId, storeId: toStore, type: "TRANSFER_IN", qtyIn: q, qtyOut: 0, note: `${transferNo} ← ${fromName}`, user: session.username, trxRef: null },
+        { id: uid("mv"), date: todayStr(), productId, storeId: fromStore, type: "TRANSFER_OUT", qtyIn: 0, qtyOut: q, note: `${transferNo} â†’ ${toName}`, user: session.username, trxRef: null },
+        { id: uid("mv"), date: todayStr(), productId, storeId: toStore, type: "TRANSFER_IN", qtyIn: q, qtyOut: 0, note: `${transferNo} â† ${fromName}`, user: session.username, trxRef: null },
         ...d.stockMovements,
       ],
       stockTransfers: [{
@@ -2883,7 +3281,7 @@ function TransferView({ data, setData, session, showToast, storeId }) {
     <div>
       <div className="card" style={{ padding: 18, marginBottom: 16, maxWidth: 520 }}>
         <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Transfer stok antar toko</div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+        <div className="form-grid-2col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
           <div>
             <label className="label">Dari toko</label>
             <select className="input" value={fromStore} onChange={(e) => setFromStore(e.target.value)}>
@@ -2916,12 +3314,17 @@ function TransferView({ data, setData, session, showToast, storeId }) {
         </button>
       </div>
 
-      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Riwayat transfer</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Riwayat transfer</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <DateRangeFilter from={trfFrom} setFrom={setTrfFrom} to={trfTo} setTo={setTrfTo} />
+        </div>
+      </div>
       <div className="card" style={{ overflowX: "auto" }}>
         <table className="tbl">
           <thead><tr><th>No. Transfer</th><th>Tanggal</th><th>Produk</th><th>Qty</th><th>Dari</th><th>Ke</th><th>Catatan</th></tr></thead>
           <tbody>
-            {data.stockTransfers.map((t) => (
+            {trfItems.map((t) => (
               <tr key={t.id}>
                 <td style={{ fontWeight: 600 }}>{t.transferNo}</td>
                 <td>{t.date}</td>
@@ -2932,9 +3335,10 @@ function TransferView({ data, setData, session, showToast, storeId }) {
                 <td style={{ color: "var(--muted)" }}>{t.note || "-"}</td>
               </tr>
             ))}
-            {data.stockTransfers.length === 0 && <tr><td colSpan={7}><EmptyHint text="Belum ada transfer stok." /></td></tr>}
+            {filteredTransfers.length === 0 && <tr><td colSpan={7}><EmptyHint text="Belum ada transfer stok." /></td></tr>}
           </tbody>
         </table>
+        <Pagination page={trfPage} setPage={setTrfPage} totalItems={filteredTransfers.length} />
       </div>
     </div>
   );
