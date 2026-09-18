@@ -387,12 +387,17 @@ table.tbl tr:last-child td{border-bottom:none;}
 @media print {
   body * { visibility: hidden; }
   .receipt-print, .receipt-print *, .report-print, .report-print * { visibility: visible; }
-  .receipt-print { position: fixed; top:0; left:0; width:100%; }
+  .receipt-print {
+    position: fixed; top: 0; left: 0;
+    width: 76mm; max-width: 76mm; margin: 0; padding: 3mm 2mm;
+    page: receipt-page;
+  }
   .report-print { position: absolute; top:0; left:0; width:100%; padding: 16px; }
   .report-print .no-print { display: none !important; }
   .report-print .print-only { display: block !important; }
   .report-print table.tbl th, .report-print table.tbl td { padding: 6px 8px; font-size: 11px; }
   @page { margin: 14mm; }
+  @page receipt-page { size: 80mm auto; margin: 0; }
 }
 `;
 
@@ -1281,6 +1286,9 @@ function ReceiptModal({ trx, settings, onClose, customerPhone }) {
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
         <button className="btn btn-outline" style={{ flex: 1, justifyContent: "center" }} onClick={() => window.print()}><Printer size={14} /> Cetak</button>
         <button className="btn btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={onClose}>Selesai</button>
+      </div>
+      <div style={{ fontSize: 10.5, color: "var(--muted)", marginTop: 8, textAlign: "center" }}>
+        Kalau aplikasi printer menampilkan pilihan ukuran kertas, pilih 80mm/58mm (bukan A4) supaya hasil cetak sesuai tampilan struk ini.
       </div>
     </Modal>
   );
