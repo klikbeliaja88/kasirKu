@@ -11,7 +11,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, RefreshCw, ShieldAlert, Lock, Barcode,
   ChevronDown, Ban, CheckCircle2, CircleDot, Truck, ClipboardList, RotateCcw,
   Contact, Gift, Wallet2, PackageCheck, ArrowLeftRight, Building2, MessageCircle, UserCog,
-  Image as ImageIcon, Camera, FileSpreadsheet, FileText,
+  Image as ImageIcon, Camera, FileSpreadsheet, FileText, ChevronLeft,
 } from "lucide-react";
 
 /* ----------------------------- helpers ----------------------------- */
@@ -626,7 +626,7 @@ function ProfileEditModal({ session, onClose, onSave }) {
       <label className="label">Nama</label>
       <input className="input" value={name} onChange={(e) => setName(e.target.value)} style={{ marginBottom: 10 }} />
       <label className="label">Password baru (kosongkan jika tidak diubah)</label>
-      <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
+      <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="********" />
       {err && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 10 }}>{err}</div>}
       <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 16 }} onClick={submit}>Simpan</button>
     </Modal>
@@ -817,11 +817,11 @@ function Pagination({ page, setPage, totalItems, pageSize = 10 }) {
   for (let i = startP; i <= endP; i++) pages.push(i);
   return (
     <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "center", padding: "14px 0 4px", flexWrap: "wrap" }}>
-      <button className="btn btn-outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} style={{ padding: "6px 10px" }}>â€¹</button>
+      <button className="btn btn-outline" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} style={{ padding: "6px 10px" }}><ChevronLeft size={14} /></button>
       {pages.map((p) => (
         <button key={p} onClick={() => setPage(p)} className="btn" style={{ background: p === page ? "var(--primary)" : "#fff", color: p === page ? "#fff" : "var(--ink)", border: "1px solid var(--border)", padding: "6px 11px", minWidth: 34, justifyContent: "center" }}>{p}</button>
       ))}
-      <button className="btn btn-outline" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} style={{ padding: "6px 10px" }}>â€º</button>
+      <button className="btn btn-outline" disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} style={{ padding: "6px 10px" }}><ChevronRight size={14} /></button>
       <span style={{ fontSize: 12, color: "var(--muted)", marginLeft: 8 }}>Halaman {page} dari {totalPages}</span>
     </div>
   );
@@ -840,11 +840,11 @@ function DateRangeFilter({ from, setFrom, to, setTo, label }) {
   return (
     <>
       <div>
-        <label className="label">{label ? `${label} â€” Dari` : "Dari tanggal"}</label>
+        <label className="label">{label ? `${label} - Dari` : "Dari tanggal"}</label>
         <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
       </div>
       <div>
-        <label className="label">{label ? `${label} â€” Sampai` : "Sampai tanggal"}</label>
+        <label className="label">{label ? `${label} - Sampai` : "Sampai tanggal"}</label>
         <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
       </div>
     </>
@@ -1210,7 +1210,7 @@ function ReceiptModal({ trx, settings, onClose, customerPhone }) {
     lines.push(settings.address);
     lines.push("");
     lines.push(trx.trxNo);
-    lines.push(`${trx.time} â€” ${trx.cashierName}`);
+    lines.push(`${trx.time} - ${trx.cashierName}`);
     lines.push("-----------------------------");
     trx.items.forEach((i) => {
       lines.push(`${i.name}`);
@@ -1244,7 +1244,7 @@ function ReceiptModal({ trx, settings, onClose, customerPhone }) {
         </div>
         <Dashed />
         <div>{trx.trxNo}</div>
-        <div>{trx.time} â€” {trx.cashierName}</div>
+        <div>{trx.time} - {trx.cashierName}</div>
         {trx.customerName && <div>Pelanggan: {trx.customerName}</div>}
         <Dashed />
         {trx.items.map((i) => (
@@ -1458,6 +1458,21 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
     setData((d) => ({ ...d, products: d.products.map((x) => (x.id === p.id ? { ...x, active: !x.active } : x)) }));
   }
 
+  const [deleteFor, setDeleteFor] = useState(null);
+
+  function canDeleteProduct(p) {
+    const usedInTrx = data.transactions.some((t) => t.items.some((i) => i.productId === p.id));
+    const usedInPO = data.purchaseOrders.some((po) => po.items.some((i) => i.productId === p.id));
+    const usedInReturns = data.returns.some((r) => r.items.some((i) => i.productId === p.id));
+    return !(usedInTrx || usedInPO || usedInReturns);
+  }
+
+  function deleteProduct(p) {
+    setData((d) => ({ ...d, products: d.products.filter((x) => x.id !== p.id) }));
+    setDeleteFor(null);
+    showToast("Produk dihapus");
+  }
+
   return (
     <div>
       <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
@@ -1494,7 +1509,7 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
                       <ProductThumb photo={p.photo} />
                       <div>
                         <div style={{ fontWeight: 600 }}>{p.name}</div>
-                        <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{p.sku} Â· {p.barcode}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--muted)" }}>{p.sku} - {p.barcode}</div>
                       </div>
                     </div>
                   </td>
@@ -1512,7 +1527,16 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
                       {p.active ? "Aktif" : "Nonaktif"}
                     </button>
                   </td>
-                  <td><button className="btn btn-outline" onClick={() => openEdit(p)}>Edit</button></td>
+                  <td style={{ display: "flex", gap: 6 }}>
+                    <button className="btn btn-outline" onClick={() => openEdit(p)}>Edit</button>
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => (canDeleteProduct(p) ? setDeleteFor(p) : showToast("Produk sudah pernah dipakai di transaksi/pembelian/retur, tidak bisa dihapus. Nonaktifkan saja produk ini.", "error"))}
+                      title={canDeleteProduct(p) ? "Hapus produk" : "Sudah dipakai di transaksi, tidak bisa dihapus"}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </td>
                 </tr>
               );
             })}
@@ -1532,6 +1556,17 @@ function ProdukView({ data, setData, showToast, storeId, canSwitchStore }) {
           onSave={saveProduct}
         />
       )}
+      {deleteFor && (
+        <Modal onClose={() => setDeleteFor(null)} title="Hapus produk" width={360}>
+          <p style={{ fontSize: 13.5, color: "var(--ink)" }}>
+            Yakin ingin menghapus <b>{deleteFor.name}</b>? Tindakan ini tidak bisa dibatalkan.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+            <button className="btn btn-outline" style={{ flex: 1, justifyContent: "center" }} onClick={() => setDeleteFor(null)}>Batal</button>
+            <button className="btn btn-danger" style={{ flex: 1, justifyContent: "center" }} onClick={() => deleteProduct(deleteFor)}>Hapus</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1546,6 +1581,7 @@ function ProductForm({ initial, categories, storeId, storeName, onClose, onSave 
   } : { sku: "", barcode: "", name: "", categoryId: categories[0]?.id || "", unit: "pcs", buyPrice: 0, sellPrice: 0, marginPercent: 0, stock: 0, minStock: 5, photo: null });
   const [err, setErr] = useState("");
   const [photoBusy, setPhotoBusy] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
@@ -1640,7 +1676,12 @@ function ProductForm({ initial, categories, storeId, storeName, onClose, onSave 
         </div>
         <div>
           <label className="label">Barcode</label>
-          <input className="input" value={form.barcode} onChange={(e) => set("barcode", e.target.value)} />
+          <div style={{ display: "flex", gap: 6 }}>
+            <input className="input" value={form.barcode} onChange={(e) => set("barcode", e.target.value)} style={{ flex: 1 }} />
+            <button type="button" className="btn btn-outline" onClick={() => setScanOpen(true)} title="Scan barcode pakai kamera" style={{ padding: "9px 11px" }}>
+              <Camera size={15} />
+            </button>
+          </div>
         </div>
         <div>
           <label className="label">Kategori</label>
@@ -1679,6 +1720,12 @@ function ProductForm({ initial, categories, storeId, storeName, onClose, onSave 
       </div>
       {err && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 10 }}>{err}</div>}
       <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 16 }} onClick={submit}>Simpan</button>
+      {scanOpen && (
+        <CameraScanModal
+          onClose={() => setScanOpen(false)}
+          onDetected={(val) => { set("barcode", val); setScanOpen(false); }}
+        />
+      )}
     </Modal>
   );
 }
@@ -1688,6 +1735,7 @@ function ProductForm({ initial, categories, storeId, storeName, onClose, onSave 
 function StokView({ data, setData, session, showToast, storeId, canSwitchStore }) {
   const [tab, setTab] = useState("card");
   const [adjustFor, setAdjustFor] = useState(null);
+  const [scanOpen, setScanOpen] = useState(false);
   const [mvFrom, setMvFrom] = useState("");
   const [mvTo, setMvTo] = useState("");
   const storeName = data.stores.find((s) => s.id === storeId)?.name || "-";
@@ -1720,6 +1768,13 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
     showToast("Stok diperbarui");
   }
 
+  function handleScanForStock(barcodeVal) {
+    const p = data.products.find((x) => x.active && (x.barcode === barcodeVal || x.sku.toLowerCase() === barcodeVal.toLowerCase()));
+    setScanOpen(false);
+    if (!p) { showToast("Produk dengan barcode tersebut tidak ditemukan", "error"); return; }
+    setAdjustFor(p);
+  }
+
   return (
     <div>
       {canSwitchStore && (
@@ -1727,9 +1782,14 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
           Menampilkan data inventory untuk <b>{storeName}</b>. Ganti toko lewat pemilih di kanan atas.
         </div>
       )}
-      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-        <TabBtn active={tab === "card"} onClick={() => setTab("card")} label="Stock card" />
-        <TabBtn active={tab === "low"} onClick={() => setTab("low")} label={`Stok menipis (${lowStock.length})`} />
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, justifyContent: "space-between", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <TabBtn active={tab === "card"} onClick={() => setTab("card")} label="Stock card" />
+          <TabBtn active={tab === "low"} onClick={() => setTab("low")} label={`Stok menipis (${lowStock.length})`} />
+        </div>
+        <button className="btn btn-outline" onClick={() => setScanOpen(true)}>
+          <Camera size={14} /> Scan barcode untuk tambah stok
+        </button>
       </div>
 
       {tab === "card" && (
@@ -1790,7 +1850,7 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
 
       <div style={{ marginTop: 18 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>Riwayat pergerakan stok â€” {storeName}</div>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>Riwayat pergerakan stok - {storeName}</div>
           <div style={{ display: "flex", gap: 8 }}>
             <DateRangeFilter from={mvFrom} setFrom={setMvFrom} to={mvTo} setTo={setMvTo} />
           </div>
@@ -1818,6 +1878,7 @@ function StokView({ data, setData, session, showToast, storeId, canSwitchStore }
       </div>
 
       {adjustFor && <AdjustModal product={adjustFor} storeId={storeId} onClose={() => setAdjustFor(null)} onSave={saveAdjustment} />}
+      {scanOpen && <CameraScanModal onClose={() => setScanOpen(false)} onDetected={handleScanForStock} />}
     </div>
   );
 }
@@ -1848,7 +1909,7 @@ function AdjustModal({ product, storeId, onClose, onSave }) {
   const [qty, setQty] = useState("");
   const [note, setNote] = useState("");
   return (
-    <Modal onClose={onClose} title={`Sesuaikan stok â€” ${product.name}`} width={380}>
+    <Modal onClose={onClose} title={`Sesuaikan stok - ${product.name}`} width={380}>
       <label className="label">Jenis penyesuaian</label>
       <select className="input" value={type} onChange={(e) => setType(e.target.value)} style={{ marginBottom: 10 }}>
         <option value="STOCK_IN">Stok masuk (restock)</option>
@@ -1960,9 +2021,9 @@ function KasShiftView({ data, setData, session, currentShift, showToast, storeId
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: 15, display: "flex", alignItems: "center", gap: 8 }}>
-                  <CircleDot size={13} color="var(--primary)" /> Shift aktif â€” {currentShift.cashierName}
+                  <CircleDot size={13} color="var(--primary)" /> Shift aktif - {currentShift.cashierName}
                 </div>
-                <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Dibuka {currentShift.openTime} Â· Modal awal {fmtRp(currentShift.openingCash)}</div>
+                <div style={{ fontSize: 12.5, color: "var(--muted)" }}>Dibuka {currentShift.openTime} - Modal awal {fmtRp(currentShift.openingCash)}</div>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button className="btn btn-outline" onClick={() => setCashForm({ type: "IN" })}><ArrowDownCircle size={14} /> Kas masuk</button>
@@ -2025,7 +2086,7 @@ function KasShiftView({ data, setData, session, currentShift, showToast, storeId
               <tr key={s.id}>
                 <td style={{ fontWeight: 600 }}>{s.cashierName}</td>
                 <td>{s.date}</td>
-                <td style={{ fontSize: 12 }}>{s.openTime} {s.closeTime ? `â€” ${s.closeTime}` : "(aktif)"}</td>
+                <td style={{ fontSize: 12 }}>{s.openTime} {s.closeTime ? `- ${s.closeTime}` : "(aktif)"}</td>
                 <td>{fmtRp(s.openingCash)}</td>
                 <td>{s.expectedCash != null ? fmtRp(s.expectedCash) : "-"}</td>
                 <td>{s.actualCash != null ? fmtRp(s.actualCash) : "-"}</td>
@@ -2148,7 +2209,7 @@ function LaporanView({ data, session, setData, showToast, storeId, canSwitchStor
     };
   }, []);
   // The printed/exported report always contains the FULL filtered range, not
-  // just the page currently being browsed on screen â€” pagination is a
+  // just the page currently being browsed on screen - pagination is a
   // browsing convenience only, never a reason to ship a partial report.
   const pageItems = printingAll ? filtered : filtered.slice((page - 1) * 10, page * 10);
 
@@ -2277,8 +2338,8 @@ function LaporanView({ data, session, setData, showToast, storeId, canSwitchStor
 
       <div className="report-print">
         <div className="print-only" style={{ display: "none", marginBottom: 14 }}>
-          <div style={{ fontWeight: 700, fontSize: 16 }}>{data.settings.storeName} â€” Laporan Penjualan</div>
-          <div style={{ fontSize: 12, color: "#555" }}>Periode: {from} s/d {to}{canSwitchStore && storeFilter !== "all" ? ` Â· Toko: ${data.stores.find((s) => s.id === storeFilter)?.name || "-"}` : ""}</div>
+          <div style={{ fontWeight: 700, fontSize: 16 }}>{data.settings.storeName} - Laporan Penjualan</div>
+          <div style={{ fontSize: 12, color: "#555" }}>Periode: {from} s/d {to}{canSwitchStore && storeFilter !== "all" ? ` - Toko: ${data.stores.find((s) => s.id === storeFilter)?.name || "-"}` : ""}</div>
           <div style={{ fontSize: 11, color: "#888" }}>Dicetak: {nowStr()}</div>
         </div>
 
@@ -2470,13 +2531,13 @@ function UserForm({ initial, stores, onClose, onSave }) {
     onSave(payload);
   }
   return (
-    <Modal onClose={onClose} title={initial ? `Edit user â€” ${initial.name}` : "Tambah user"} width={380}>
+    <Modal onClose={onClose} title={initial ? `Edit user - ${initial.name}` : "Tambah user"} width={380}>
       <label className="label">Nama lengkap</label>
       <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} style={{ marginBottom: 10 }} />
       <label className="label">Username</label>
       <input className="input" value={form.username} disabled={!!initial} onChange={(e) => set("username", e.target.value)} style={{ marginBottom: 10 }} />
       <label className="label">Password {initial && "(kosongkan jika tidak diubah)"}</label>
-      <input className="input" type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder={initial ? "â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" : ""} style={{ marginBottom: 10 }} />
+      <input className="input" type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder={initial ? "********" : ""} style={{ marginBottom: 10 }} />
       <label className="label">Role</label>
       <select className="input" value={form.role} onChange={(e) => set("role", e.target.value)} style={{ marginBottom: 10 }}>
         {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
@@ -2704,7 +2765,7 @@ function PelangganView({ data, setData, showToast }) {
 
       {formOpen && <CustomerForm onClose={() => setFormOpen(false)} onSave={addCustomer} />}
       {payDebtFor && (
-        <Modal onClose={() => setPayDebtFor(null)} title={`Bayar piutang â€” ${payDebtFor.name}`} width={340}>
+        <Modal onClose={() => setPayDebtFor(null)} title={`Bayar piutang - ${payDebtFor.name}`} width={340}>
           <PayAmountForm max={payDebtFor.piutang} onConfirm={(amt) => payDebt(payDebtFor.id, amt)} />
         </Modal>
       )}
@@ -2760,7 +2821,7 @@ function CustomerDetailModal({ customer, data, onClose }) {
         {trx.length === 0 && <EmptyHint text="Belum ada transaksi." />}
         {trx.map((t) => (
           <div key={t.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "6px 0", borderBottom: "1px solid var(--border)" }}>
-            <span>{t.trxNo} Â· {t.date}</span><span style={{ fontWeight: 600 }}>{fmtRp(t.total)}</span>
+            <span>{t.trxNo} - {t.date}</span><span style={{ fontWeight: 600 }}>{fmtRp(t.total)}</span>
           </div>
         ))}
       </div>
@@ -2959,7 +3020,7 @@ function PembelianView({ data, setData, session, showToast, storeId }) {
       </div>
       {formOpen && <PurchaseOrderForm suppliers={data.suppliers} products={data.products} onClose={() => setFormOpen(false)} onSave={createPO} />}
       {payFor && (
-        <Modal onClose={() => setPayFor(null)} title={`Bayar hutang â€” ${payFor.poNo}`} width={340}>
+        <Modal onClose={() => setPayFor(null)} title={`Bayar hutang - ${payFor.poNo}`} width={340}>
           <PayAmountForm max={payFor.total - payFor.paidAmount} onConfirm={(amt) => payPO(payFor, amt)} />
         </Modal>
       )}
@@ -3106,7 +3167,7 @@ function ReturView({ data, setData, session, showToast, storeId }) {
           <div style={{ marginTop: 10 }}>
             {matchedTrx.slice(0, 5).map((t) => (
               <div key={t.id} onClick={() => setSelectedTrx(t)} style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", borderRadius: 8, cursor: "pointer", fontSize: 13 }} className="trx-hit">
-                <span>{t.trxNo} Â· {t.date} Â· {t.cashierName}</span>
+                <span>{t.trxNo} - {t.date} - {t.cashierName}</span>
                 <span style={{ fontWeight: 700 }}>{fmtRp(t.total)}</span>
               </div>
             ))}
@@ -3192,14 +3253,14 @@ function NewReturnModal({ trx, onClose, onSave, isDirect, alreadyReturned }) {
   const refund = trx.items.reduce((s, i, idx) => s + i.price * qtys[idx], 0);
 
   return (
-    <Modal onClose={onClose} title={`Retur â€” ${trx.trxNo}`} width={420}>
+    <Modal onClose={onClose} title={`Retur - ${trx.trxNo}`} width={420}>
       <div style={{ marginBottom: 10 }}>
         {trx.items.map((i, idx) => (
           <div key={i.productId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid var(--border)" }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{i.name}</div>
               <div style={{ fontSize: 11.5, color: "var(--muted)" }}>
-                Dibeli {i.qty} Â· {fmtRp(i.price)}{maxes[idx] < i.qty && ` Â· sisa bisa diretur ${maxes[idx]}`}
+                Dibeli {i.qty} - {fmtRp(i.price)}{maxes[idx] < i.qty && ` - sisa bisa diretur ${maxes[idx]}`}
               </div>
             </div>
             <input className="input" type="number" min={0} max={maxes[idx]} value={qtys[idx]} disabled={maxes[idx] === 0} onChange={(e) => setQty(idx, e.target.value, maxes[idx])} style={{ width: 70 }} />
@@ -3264,8 +3325,8 @@ function TransferView({ data, setData, session, showToast, storeId }) {
         return adjustStock(adjustStock(p, fromStore, -q), toStore, q);
       }),
       stockMovements: [
-        { id: uid("mv"), date: todayStr(), productId, storeId: fromStore, type: "TRANSFER_OUT", qtyIn: 0, qtyOut: q, note: `${transferNo} â†’ ${toName}`, user: session.username, trxRef: null },
-        { id: uid("mv"), date: todayStr(), productId, storeId: toStore, type: "TRANSFER_IN", qtyIn: q, qtyOut: 0, note: `${transferNo} â† ${fromName}`, user: session.username, trxRef: null },
+        { id: uid("mv"), date: todayStr(), productId, storeId: fromStore, type: "TRANSFER_OUT", qtyIn: 0, qtyOut: q, note: `${transferNo} -> ${toName}`, user: session.username, trxRef: null },
+        { id: uid("mv"), date: todayStr(), productId, storeId: toStore, type: "TRANSFER_IN", qtyIn: q, qtyOut: 0, note: `${transferNo} <- ${fromName}`, user: session.username, trxRef: null },
         ...d.stockMovements,
       ],
       stockTransfers: [{
